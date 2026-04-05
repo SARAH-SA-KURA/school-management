@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Figma__whoami",
+      "mcp__claude_ai_Figma__get_metadata",
+      "mcp__claude_ai_Figma__get_screenshot",
+      "Bash(powershell -Command:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)",
+      "Bash(del \"C:\\\\Users\\\\BADR\\\\Desktop\\\\SchoolProject\\\\shool_managment\\\\parse_figma.js\")",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(python:*)",
+      "Bash(git -C \"C:\\\\Users\\\\BADR\\\\Desktop\\\\SchoolProject\\\\shool_managment\" log --oneline -5)",
+      "Bash(php:*)",
+      "Bash(composer:*)",
+      "mcp__plugin_claude-mem_mcp-search__search",
+      "Bash(npm install:*)",
+      "Bash(npx react-scripts build:*)",
+      "Bash(npm ls:*)",
+      "Bash(ls:*)",
+      "mcp__claude_ai_Figma__get_design_context",
+      "mcp__scrapling__fetch",
+      "Bash(claude mcp add:*)",
+      "Bash(npm run build:*)",
+      "Bash(timeout /t 3)",
+      "Bash(bun run:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd //c \"taskkill /PID 14572 /F\")",
+      "Bash(npm start)",
+      "Bash(\"C:\\\\Users\\\\BADR\\\\Desktop\\\\SchoolProject\\\\extract_pages.js\" << 'SCRIPT'\nconst fs = require\\('fs'\\);\nconst path = require\\('path'\\);\n\nconst filePath = path.join\\(\n  'C:\\\\\\\\Users\\\\\\\\BADR\\\\\\\\.claude\\\\\\\\projects\\\\\\\\C--Users-BADR-Desktop-SchoolProject-shool-managment',\n  '78220e5e-ff50-49fe-9825-06a15cd7377d',\n  'tool-results',\n  'toolu_01FSNuLh3mKvrLG5By1oHuTZ.txt'\n\\);\n\nconsole.log\\('Reading Figma JSON...'\\);\nconst raw = fs.readFileSync\\(filePath, 'utf-8'\\);\nconst root = JSON.parse\\(raw\\);\n\nconsole.log\\(`\\\\nRoot: id=\"${root.id}\", name=\"${root.name}\", type=\"${root.type}\"`\\);\nconsole.log\\(`\\\\nDirect children \\(${root.children.length} total\\):\\\\n`\\);\nconsole.log\\('---------------------------------------------------'\\);\nconsole.log\\(String\\('#'\\).padEnd\\(4\\) + String\\('ID'\\).padEnd\\(20\\) + String\\('TYPE'\\).padEnd\\(12\\) + 'NAME'\\);\nconsole.log\\('---------------------------------------------------'\\);\n\nroot.children.forEach\\(\\(child, i\\) => {\n  console.log\\(\n    String\\(i + 1\\).padEnd\\(4\\) +\n    String\\(child.id\\).padEnd\\(20\\) +\n    String\\(child.type\\).padEnd\\(12\\) +\n    child.name\n  \\);\n}\\);\n\nconsole.log\\('---------------------------------------------------'\\);\nSCRIPT)",
+      "Bash(\"C:\\\\Users\\\\BADR\\\\Desktop\\\\SchoolProject\\\\extract_pages.js\" << 'SCRIPT'\nconst fs = require\\('fs'\\);\n\nconst filePath = 'C:\\\\\\\\Users\\\\\\\\BADR\\\\\\\\.claude\\\\\\\\projects\\\\\\\\C--Users-BADR-Desktop-SchoolProject-shool-managment\\\\\\\\78220e5e-ff50-49fe-9825-06a15cd7377d\\\\\\\\tool-results\\\\\\\\toolu_01FSNuLh3mKvrLG5By1oHuTZ.txt';\n\nconsole.log\\('Reading Figma JSON...'\\);\nconst raw = fs.readFileSync\\(filePath, 'utf-8'\\);\nconst root = JSON.parse\\(raw\\);\n\nconsole.log\\(`\\\\nRoot: id=\"${root.id}\", name=\"${root.name}\", type=\"${root.type}\"`\\);\nconsole.log\\(`\\\\nDirect children \\(${root.children.length} total\\):\\\\n`\\);\nconsole.log\\('---------------------------------------------------'\\);\nconsole.log\\(String\\('#'\\).padEnd\\(4\\) + String\\('ID'\\).padEnd\\(20\\) + String\\('TYPE'\\).padEnd\\(12\\) + 'NAME'\\);\nconsole.log\\('---------------------------------------------------'\\);\n\nroot.children.forEach\\(\\(child, i\\) => {\n  console.log\\(\n    String\\(i + 1\\).padEnd\\(4\\) +\n    String\\(child.id\\).padEnd\\(20\\) +\n    String\\(child.type\\).padEnd\\(12\\) +\n    child.name\n  \\);\n}\\);\n\nconsole.log\\('---------------------------------------------------'\\);\nSCRIPT)",
+      "Bash(\"C:/Users/BADR/Desktop/SchoolProject/extract_pages.js\" << 'ENDOFSCRIPT'\nconst fs = require\\('fs'\\);\n\nconst filePath = 'C:/Users/BADR/.claude/projects/C--Users-BADR-Desktop-SchoolProject-shool-managment/78220e5e-ff50-49fe-9825-06a15cd7377d/tool-results/toolu_01FSNuLh3mKvrLG5By1oHuTZ.txt';\n\nconsole.log\\('Reading Figma JSON...'\\);\nconst raw = fs.readFileSync\\(filePath, 'utf-8'\\);\nconst root = JSON.parse\\(raw\\);\n\nconsole.log\\(''\\);\nconsole.log\\('Root: id=\"' + root.id + '\", name=\"' + root.name + '\", type=\"' + root.type + '\"'\\);\nconsole.log\\(''\\);\nconsole.log\\('Direct children \\(' + root.children.length + ' total\\):'\\);\nconsole.log\\(''\\);\nconsole.log\\('---------------------------------------------------'\\);\nconsole.log\\('#'.padEnd\\(4\\) + 'ID'.padEnd\\(20\\) + 'TYPE'.padEnd\\(12\\) + 'NAME'\\);\nconsole.log\\('---------------------------------------------------'\\);\n\nroot.children.forEach\\(function\\(child, i\\) {\n  console.log\\(\n    String\\(i + 1\\).padEnd\\(4\\) +\n    String\\(child.id\\).padEnd\\(20\\) +\n    String\\(child.type\\).padEnd\\(12\\) +\n    child.name\n  \\);\n}\\);\n\nconsole.log\\('---------------------------------------------------'\\);\nENDOFSCRIPT)",
+      "Bash(npx tsc:*)",
+      "Bash(\"C:\\\\xampp\\\\mysql\\\\bin\\\\mysql.exe\":*)",
+      "Bash(python3:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "n8n-mcp"
+  ]
+}
