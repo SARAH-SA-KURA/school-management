@@ -49,7 +49,7 @@ const GroupesPage: React.FC = () => {
       label: 'Nom',
       sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium cursor-pointer hover:text-primary-700">
+        <span className="text-primary-600 dark:text-primary-400 font-medium cursor-pointer hover:text-primary-700">
           {item.nom}
         </span>
       ),
@@ -62,7 +62,7 @@ const GroupesPage: React.FC = () => {
       label: 'Statut',
       sortable: true,
       render: (item) => (
-        <span className={`px-3 py-1 rounded-full text-xs font-medium ${item.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+        <span className={`px-3 py-1 rounded-full text-xs font-medium ${item.is_active ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
           {item.is_active ? 'Actif' : 'Inactif'}
         </span>
       ),
@@ -73,11 +73,11 @@ const GroupesPage: React.FC = () => {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Groupes</h1>
-        <p className="text-sm text-gray-500">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Groupes</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
           {' / '}
-          <span className="text-primary-600">Académique</span>
+          <span className="text-primary-600 dark:text-primary-400">Académique</span>
           {' / '}
           <span>Groupes</span>
         </p>
@@ -98,11 +98,11 @@ const GroupesPage: React.FC = () => {
         perPage={perPage}
         onPerPageChange={handlePerPageChange}
         headerContent={
-          <h3 className="text-lg font-semibold text-gray-900">Group List</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Group List</h3>
         }
         toolbarExtra={
           <button onClick={toggleSort}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <HiSortAscending className="h-4 w-4" /> Sort By {sortDir === 'asc' ? 'A-Z' : 'Z-A'}
           </button>
         }

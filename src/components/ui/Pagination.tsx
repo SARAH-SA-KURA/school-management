@@ -39,7 +39,7 @@ const Pagination: React.FC<PaginationProps> = ({
   return (
     <div className="flex items-center justify-between px-2 py-3">
       {totalItems !== undefined && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Affichage {start}-{end} sur {totalItems}
         </p>
       )}
@@ -47,13 +47,13 @@ const Pagination: React.FC<PaginationProps> = ({
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <HiChevronLeft className="h-4 w-4" />
         </button>
         {pages.map((page, i) =>
           typeof page === 'string' ? (
-            <span key={`dots-${i}`} className="px-2 text-gray-400">...</span>
+            <span key={`dots-${i}`} className="px-2 text-gray-400 dark:text-gray-500">...</span>
           ) : (
             <button
               key={page}
@@ -61,7 +61,7 @@ const Pagination: React.FC<PaginationProps> = ({
               className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors
                 ${page === currentPage
                   ? 'bg-primary-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
             >
               {page}
@@ -71,7 +71,7 @@ const Pagination: React.FC<PaginationProps> = ({
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <HiChevronRight className="h-4 w-4" />
         </button>

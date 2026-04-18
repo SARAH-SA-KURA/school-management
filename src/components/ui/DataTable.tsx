@@ -84,14 +84,14 @@ function DataTable<T extends { id: number | string }>({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-12">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12">
         <Spinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header content (filter bar) */}
       {headerContent && (
         <div className="px-6 pt-5 pb-2">
@@ -101,7 +101,7 @@ function DataTable<T extends { id: number | string }>({
 
       {/* Row Per Page selector + Sort + Search */}
       {(onPerPageChange || onSearchChange || toolbarExtra) && (
-        <div className="px-6 py-3 flex items-center justify-between text-sm text-gray-600">
+        <div className="px-6 py-3 flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
           <div className="flex items-center gap-2">
             {onPerPageChange && (
               <>
@@ -109,7 +109,7 @@ function DataTable<T extends { id: number | string }>({
                 <select
                   value={perPage}
                   onChange={(e) => onPerPageChange(Number(e.target.value))}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                 >
                   {[10, 25, 50, 100].map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -123,14 +123,14 @@ function DataTable<T extends { id: number | string }>({
             {toolbarExtra}
             {onSearchChange && (
               <div className="relative">
-                <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
                 <input
                   type="text"
                   value={localSearch}
                   onChange={(e) => setLocalSearch(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') onSearchChange(localSearch); }}
                   placeholder={searchPlaceholder}
-                  className="text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 bg-white outline-none placeholder-gray-400 min-w-[160px]"
+                  className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 outline-none placeholder-gray-400 dark:placeholder-gray-500 min-w-[160px]"
                 />
               </div>
             )}
@@ -141,22 +141,22 @@ function DataTable<T extends { id: number | string }>({
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-y border-gray-200 bg-gray-50/50">
+            <tr className="border-y border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/60">
               {selectable && (
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleAll}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                   />
                 </th>
               )}
               {columns.map((col) => (
                 <th
                   key={String(col.key)}
-                  className={`px-6 py-3 text-left text-sm font-medium text-gray-600
-                    ${col.sortable ? 'cursor-pointer select-none hover:text-gray-900' : ''}
+                  className={`px-6 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300
+                    ${col.sortable ? 'cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-100' : ''}
                     ${col.className || ''}`}
                   onClick={() => col.sortable && handleSort(String(col.key))}
                 >
@@ -164,8 +164,8 @@ function DataTable<T extends { id: number | string }>({
                     {col.label}
                     {col.sortable && (
                       <div className="flex flex-col">
-                        <HiChevronUp className={`h-3 w-3 -mb-0.5 ${sortKey === String(col.key) && sortDir === 'asc' ? 'text-gray-900' : 'text-gray-300'}`} />
-                        <HiChevronDown className={`h-3 w-3 -mt-0.5 ${sortKey === String(col.key) && sortDir === 'desc' ? 'text-gray-900' : 'text-gray-300'}`} />
+                        <HiChevronUp className={`h-3 w-3 -mb-0.5 ${sortKey === String(col.key) && sortDir === 'asc' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600'}`} />
+                        <HiChevronDown className={`h-3 w-3 -mt-0.5 ${sortKey === String(col.key) && sortDir === 'desc' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600'}`} />
                       </div>
                     )}
                   </div>
@@ -173,10 +173,10 @@ function DataTable<T extends { id: number | string }>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-6 py-12 text-center text-sm text-gray-500">
+                <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
                   {emptyMessage}
                 </td>
               </tr>
@@ -184,7 +184,7 @@ function DataTable<T extends { id: number | string }>({
               data.map((item) => (
                 <tr
                   key={item.id}
-                  className={`hover:bg-gray-50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+                  className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
                   onClick={() => onRowClick?.(item)}
                 >
                   {selectable && (
@@ -194,12 +194,12 @@ function DataTable<T extends { id: number | string }>({
                         checked={ids.has(item.id)}
                         onChange={() => toggleOne(item.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                       />
                     </td>
                   )}
                   {columns.map((col) => (
-                    <td key={String(col.key)} className={`px-6 py-4 text-sm text-gray-700 ${col.className || ''}`}>
+                    <td key={String(col.key)} className={`px-6 py-4 text-sm text-gray-700 dark:text-gray-300 ${col.className || ''}`}>
                       {col.render
                         ? col.render(item)
                         : String((item as any)[col.key] ?? '')}
@@ -212,7 +212,7 @@ function DataTable<T extends { id: number | string }>({
         </table>
       </div>
       {onPageChange && totalPages > 1 && (
-        <div className="border-t border-gray-100 px-4">
+        <div className="border-t border-gray-100 dark:border-gray-700 px-4">
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}

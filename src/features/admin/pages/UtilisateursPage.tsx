@@ -17,10 +17,10 @@ const ROLE_OPTIONS = [
 
 const roleBadge = (role: string) => {
   const styles: Record<string, string> = {
-    directeur: 'bg-purple-100 text-purple-700',
-    formateur: 'bg-orange-100 text-orange-700',
-    stagiaire: 'bg-green-100 text-green-700',
-    surveillant: 'bg-blue-100 text-blue-700',
+    directeur: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+    formateur: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
+    stagiaire: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    surveillant: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
   };
   const labels: Record<string, string> = {
     directeur: 'Directeur',
@@ -29,7 +29,7 @@ const roleBadge = (role: string) => {
     surveillant: 'Surveillant General',
   };
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[role] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[role] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
       {labels[role] || role}
     </span>
   );
@@ -105,7 +105,7 @@ const UtilisateursPage: React.FC = () => {
     {
       key: 'id', label: 'ID', sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium cursor-pointer hover:text-primary-700">
+        <span className="text-primary-600 dark:text-primary-400 font-medium cursor-pointer hover:text-primary-700">
           USR-{String(item.id).padStart(3, '0')}
         </span>
       ),
@@ -117,14 +117,14 @@ const UtilisateursPage: React.FC = () => {
       key: 'actions', label: 'Action',
       render: (item) => (
         <div className="relative group">
-          <button className="p-1.5 text-gray-400 hover:text-gray-600">
+          <button className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
             <HiDotsVertical className="h-5 w-5" />
           </button>
-          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 hidden group-hover:block min-w-[120px]">
-            <button onClick={() => openEdit(item)} className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+          <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10 hidden group-hover:block min-w-[120px]">
+            <button onClick={() => openEdit(item)} className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2">
               <HiPencil className="h-4 w-4" /> Modifier
             </button>
-            <button onClick={() => { setSelected(item); setDeleteOpen(true); }} className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+            <button onClick={() => { setSelected(item); setDeleteOpen(true); }} className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
               <HiTrash className="h-4 w-4" /> Supprimer
             </button>
           </div>
@@ -137,11 +137,11 @@ const UtilisateursPage: React.FC = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Utilisateurs</h1>
-          <p className="text-sm text-gray-500">
-            <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Utilisateurs</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
             {' / '}
-            <span className="text-primary-600">Gestion des utilisateurs</span>
+            <span className="text-primary-600 dark:text-primary-400">Gestion des utilisateurs</span>
             {' / '}
             <span>Utilisateurs</span>
           </p>
@@ -170,11 +170,11 @@ const UtilisateursPage: React.FC = () => {
         perPage={perPage}
         onPerPageChange={handlePerPageChange}
         headerContent={
-          <h3 className="text-lg font-semibold text-gray-900">Liste des utilisateurs</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Liste des utilisateurs</h3>
         }
         toolbarExtra={
           <button onClick={toggleSort}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <HiSortAscending className="h-4 w-4" /> Sort By {sortDir === 'asc' ? 'A-Z' : 'Z-A'}
           </button>
         }

@@ -91,6 +91,11 @@ class EmploiDuTempsController extends Controller
         return $this->success($emploiDuTemp, 'Séance mise à jour');
     }
 
+    public function show(EmploiDuTemps $emploiDuTemp)
+    {
+        return $this->success($emploiDuTemp->load(['group.filiere', 'module', 'formateur.user', 'salle']));
+    }
+
     public function destroy(EmploiDuTemps $emploiDuTemp)
     {
         $emploiDuTemp->delete();

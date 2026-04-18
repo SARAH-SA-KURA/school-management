@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { useRolePath } from '../../../hooks/useRolePath';
 import { HiPencil, HiEye, HiEyeOff, HiCheck } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import axiosInstance from '../../../utils/axios';
@@ -15,24 +14,14 @@ const getAnneeScolaire = () => {
   return new Date().getMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 };
 
-const roleLabel = (role?: string) => {
-  switch (role) {
-    case 'directeur': return 'Directeur';
-    case 'surveillant': return 'Surveillant Général';
-    case 'formateur': return 'Formateur';
-    case 'stagiaire': return 'Stagiaire';
-    default: return '—';
-  }
-};
-
-const ParametresPage: React.FC = () => {
+const StagiaireParametresPage: React.FC = () => {
   const { isDark } = useTheme();
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  const basePath = useRolePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'account';
 
+  // ── Avatar ──
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(() => storage.getAvatar());
 
@@ -46,19 +35,12 @@ const ParametresPage: React.FC = () => {
       setAvatarPreview(b64);
       storage.setAvatar(b64);
       window.dispatchEvent(new Event('avatarUpdated'));
-      toast.success('Photo mise à jour');
+      toast.success('Photo mise a jour');
     };
     reader.readAsDataURL(file);
   };
 
-  const [specialite, setSpecialite] = useState('');
-  useEffect(() => {
-    if (user?.role !== 'formateur') return;
-    axiosInstance.get('/auth/formateur')
-      .then(r => setSpecialite((r.data.data ?? r.data)?.specialisation || ''))
-      .catch(() => {});
-  }, [user?.role]);
-
+  // ── Account form ──
   const [form, setForm] = useState({
     prenom: '', nom: '', telephone: '', address: '',
     anneeScolaire: getAnneeScolaire(),
@@ -74,7 +56,7 @@ const ParametresPage: React.FC = () => {
 
   const handleAccountSave = async () => {
     const cu = storage.getUser();
-    if (!cu?.id) { toast.error('Session expirée'); return; }
+    if (!cu?.id) { toast.error('Session expiree'); return; }
     setSavingAccount(true);
     try {
       const res = await axiosInstance.put(`/users/${cu.id}`, {
@@ -83,7 +65,7 @@ const ParametresPage: React.FC = () => {
       const updated = { ...cu, ...(res.data.data ?? {}) };
       storage.setUser(updated);
       dispatch(setUser(updated));
-      toast.success('Profil mis à jour');
+      toast.success('Profil mis a jour');
       setEditingContact(false);
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Erreur');
@@ -96,16 +78,17 @@ const ParametresPage: React.FC = () => {
     setEditingContact(false);
   };
 
+  // ── Password ──
   const [pwd, setPwd] = useState({ current: '', newPwd: '', confirm: '' });
   const [showPwd, setShowPwd] = useState({ current: false, newPwd: false, confirm: false });
   const [savingPwd, setSavingPwd] = useState(false);
   const pwdMinLength = pwd.newPwd.length >= 8;
-  const pwdMixed    = /[a-z]/.test(pwd.newPwd) && /[A-Z]/.test(pwd.newPwd);
-  const pwdSpecial  = /[@#$%^&*!]/.test(pwd.newPwd);
+  const pwdMixed = /[a-z]/.test(pwd.newPwd) && /[A-Z]/.test(pwd.newPwd);
+  const pwdSpecial = /[@#$%^&*!]/.test(pwd.newPwd);
 
   const handlePwdSave = async () => {
-    if (pwd.newPwd !== pwd.confirm) { toast.error('Mots de passe différents'); return; }
-    if (!pwdMinLength) { toast.error('Minimum 8 caractères'); return; }
+    if (pwd.newPwd !== pwd.confirm) { toast.error('Mots de passe differents'); return; }
+    if (!pwdMinLength) { toast.error('Minimum 8 caracteres'); return; }
     setSavingPwd(true);
     try {
       await axiosInstance.post('/auth/change-password', {
@@ -113,36 +96,38 @@ const ParametresPage: React.FC = () => {
         new_password: pwd.newPwd,
         new_password_confirmation: pwd.confirm,
       });
-      toast.success('Mot de passe modifié');
+      toast.success('Mot de passe modifie');
       setPwd({ current: '', newPwd: '', confirm: '' });
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Erreur');
     } finally { setSavingPwd(false); }
   };
 
+  // ── Notifications ──
   const [notifs, setNotifs] = useState({ email: true, examens: false, systeme: true });
   const [savingNotifs, setSavingNotifs] = useState(false);
   const handleNotifsSave = async () => {
     setSavingNotifs(true);
     await new Promise(r => setTimeout(r, 400));
     setSavingNotifs(false);
-    toast.success('Notifications enregistrées');
+    toast.success('Notifications enregistrees');
   };
 
   const initials = `${user?.prenom?.[0] ?? ''}${user?.nom?.[0] ?? ''}`.toUpperCase();
 
+  // ── Design tokens ──
   const card = `rounded-[24px] border p-6 ${
-    isDark ? 'bg-gray-900 border-white/10' : 'bg-white border-[#E7E7E7]'
+    isDark ? 'bg-[#111827]/80 border-white/5' : 'bg-white border-[#E7E7E7]'
   }`;
   const lbl = `block text-sm font-bold mb-1.5 ${isDark ? 'text-gray-400' : 'text-[#323130]'}`;
   const inp = (disabled?: boolean) =>
     `w-full border rounded-xl px-4 py-3 text-sm outline-none transition-colors ${
       disabled
         ? isDark
-          ? 'bg-white/5 border-white/10 text-gray-600 cursor-default'
+          ? 'bg-white/5 border-white/5 text-blue-200/40 cursor-default'
           : 'bg-[#E7E7E7] border-[#D1D1D1] text-[#737373] cursor-default'
         : isDark
-          ? 'bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
+          ? 'bg-white/5 border-white/10 text-gray-100 placeholder-blue-200/20 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
           : 'bg-white border-[#D1D1D1] text-[#454545] focus:border-[#1A71F6]'
     }`;
   const btnPrimary = `px-6 py-3 rounded-xl text-sm font-bold bg-[#1A71F6] hover:bg-blue-600 text-white transition-colors disabled:opacity-50`;
@@ -175,24 +160,24 @@ const ParametresPage: React.FC = () => {
     </button>
   );
 
-  const dashboardPath = `${basePath}/dashboard`;
-  const isFormateur = user?.role === 'formateur';
-
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen ${isDark ? 'bg-[#121217]' : 'bg-gray-50'}`}>
+
+      {/* Breadcrumb */}
       <div className="mb-5">
-        <h1 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Paramètres généraux</h1>
+        <h1 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Parametre generaux</h1>
         <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          <Link to={dashboardPath} className="text-[#1A71F6] hover:underline">Tableau de bord</Link>
+          <Link to="/stagiaire" className="text-[#1A71F6] hover:underline">Tableau de bord</Link>
           {' / '}
-          <span>Paramètres</span>
+          <span>Parametres</span>
           {' / '}
-          <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>Paramètres généraux</span>
+          <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>Parametre generaux</span>
         </p>
       </div>
 
+      {/* Tab Bar */}
       <div className={`flex items-center gap-2 px-3 py-2 rounded-[14px] border w-full mb-5 ${
-        isDark ? 'bg-gray-800 border-gray-600' : 'bg-white border-[#D1D1D1]'
+        isDark ? 'bg-[#111827]/60 border-white/5' : 'bg-white border-[#D1D1D1]'
       }`}>
         {(['account', 'security', 'notification'] as const).map(t => {
           const label = { account: 'Account', security: 'Security', notification: 'Notification' }[t];
@@ -203,8 +188,8 @@ const ParametresPage: React.FC = () => {
               onClick={() => setSearchParams({ tab: t })}
               className={`flex-1 text-sm font-bold transition-colors rounded-lg text-center ${
                 isActive
-                  ? 'bg-[#D9EDFF] text-[#1A71F6] py-1.5'
-                  : `py-1 ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-[#737373] hover:text-gray-900'}`
+                  ? isDark ? 'bg-blue-500/15 text-blue-400 py-1.5' : 'bg-[#D9EDFF] text-[#1A71F6] py-1.5'
+                  : `py-1 ${isDark ? 'text-blue-200/30 hover:text-blue-200/60' : 'text-[#737373] hover:text-gray-900'}`
               }`}
             >
               {label}
@@ -213,11 +198,15 @@ const ParametresPage: React.FC = () => {
         })}
       </div>
 
+      {/* ══════════════ ACCOUNT TAB ══════════════ */}
       {activeTab === 'account' && (
         <div className="flex flex-col gap-5">
+
+          {/* Profile Information */}
           <div className={card}>
             <p className={`${sectionTitle} mb-5`}>Profile Information</p>
 
+            {/* Avatar */}
             <div className="flex items-center gap-3 mb-5">
               <div className="cursor-pointer flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
                 {avatarPreview ? (
@@ -242,40 +231,35 @@ const ParametresPage: React.FC = () => {
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             </div>
 
+            {/* Row 1: First Name | Last Name | Annee scolaire */}
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <label className={lbl}>First Name</label>
-                <input value={form.prenom} onChange={e => setForm(p => ({ ...p, prenom: e.target.value }))} className={inp()} placeholder="Prénom" />
+                <input value={form.prenom} onChange={e => setForm(p => ({ ...p, prenom: e.target.value }))} className={inp()} placeholder="Prenom" />
               </div>
               <div>
                 <label className={lbl}>Last Name</label>
                 <input value={form.nom} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} className={inp()} placeholder="Nom" />
               </div>
               <div>
-                <label className={lbl}>Année scolaire</label>
+                <label className={lbl}>Annee scolaire</label>
                 <input value={form.anneeScolaire} readOnly className={inp(true)} />
               </div>
             </div>
 
+            {/* Row 2: Grade | Filiere | Nom de l'etablissement */}
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div>
-                <label className={lbl}>Rôle</label>
-                <input value={roleLabel(user?.role)} readOnly className={inp(true)} />
+                <label className={lbl}>Grade</label>
+                <input value="Stagiaire" readOnly className={inp(true)} />
               </div>
-              {isFormateur ? (
-                <div>
-                  <label className={lbl}>Spécialité</label>
-                  <input value={specialite} readOnly className={inp(true)} />
-                </div>
-              ) : (
-                <div>
-                  <label className={lbl}>Identifiant</label>
-                  <input value={user?.email?.split('@')[0] || '—'} readOnly className={inp(true)} />
-                </div>
-              )}
               <div>
-                <label className={lbl}>Nom de l'établissement</label>
-                <input value="ISTA - Institut Spécialisé de Technologie Appliquée" readOnly className={inp(true)} />
+                <label className={lbl}>Filiere</label>
+                <input value="Developpement Digital" readOnly className={inp(true)} />
+              </div>
+              <div>
+                <label className={lbl}>Nom de l'etablissement</label>
+                <input value="ISTA - Institut Specialise de Technologie Appliquee" readOnly className={inp(true)} />
               </div>
             </div>
 
@@ -287,6 +271,7 @@ const ParametresPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Contact Detail */}
           <div className={card}>
             <div className="flex items-center justify-between mb-5">
               <p className={sectionTitle}>Contact Detail</p>
@@ -304,15 +289,15 @@ const ParametresPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className={lbl}>Phone Number</label>
-                <input type="tel" value={form.telephone || ''} onChange={e => setForm(p => ({ ...p, telephone: e.target.value }))} readOnly={!editingContact} placeholder={editingContact ? '+212...' : '—'} className={inp(!editingContact)} />
+                <input type="tel" value={form.telephone || ''} onChange={e => setForm(p => ({ ...p, telephone: e.target.value }))} readOnly={!editingContact} placeholder={editingContact ? '+212...' : ''} className={inp(!editingContact)} />
               </div>
               <div>
                 <label className={lbl}>Email</label>
-                <input value={user?.email || '—'} readOnly className={inp(true)} />
+                <input value={user?.email || ''} readOnly className={inp(true)} />
               </div>
               <div>
                 <label className={lbl}>Address</label>
-                <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} readOnly={!editingContact} placeholder={editingContact ? 'Votre adresse' : '—'} className={inp(!editingContact)} />
+                <input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} readOnly={!editingContact} placeholder={editingContact ? 'Votre adresse' : ''} className={inp(!editingContact)} />
               </div>
             </div>
 
@@ -328,6 +313,7 @@ const ParametresPage: React.FC = () => {
         </div>
       )}
 
+      {/* ══════════════ SECURITY TAB ══════════════ */}
       {activeTab === 'security' && (
         <div className={card}>
           <p className={`${sectionTitle} mb-5`}>Password</p>
@@ -357,8 +343,8 @@ const ParametresPage: React.FC = () => {
 
           <div className="flex flex-col gap-2 mb-6">
             <Req ok={pwdMinLength} text="Minimum 8 characters" />
-            <Req ok={pwdMixed}     text="Use a combination of uppercase and lowercase letters" />
-            <Req ok={pwdSpecial}   text="Use of special characters (e.g., @, #, $, %)" />
+            <Req ok={pwdMixed} text="Use a combination of uppercase and lowercase letters" />
+            <Req ok={pwdSpecial} text="Use of special characters (e.g., @, #, $, %)" />
           </div>
 
           <div className="flex items-center gap-4">
@@ -372,15 +358,16 @@ const ParametresPage: React.FC = () => {
         </div>
       )}
 
+      {/* ══════════════ NOTIFICATION TAB ══════════════ */}
       {activeTab === 'notification' && (
         <div className={card}>
           <p className={`${sectionTitle} mb-5`}>Notification</p>
 
           <div className="space-y-4 mb-6">
             {([
-              { k: 'email',   label: 'Notifications par email' },
+              { k: 'email', label: 'Notifications par email' },
               { k: 'examens', label: "Alertes d'examens / notes" },
-              { k: 'systeme', label: 'Mises à jour système' },
+              { k: 'systeme', label: 'Mises a jour systeme' },
             ] as const).map(({ k, label }) => (
               <div key={k} className="flex items-center justify-between">
                 <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-[#454545]'}`}>{label}</span>
@@ -403,4 +390,4 @@ const ParametresPage: React.FC = () => {
   );
 };
 
-export default ParametresPage;
+export default StagiaireParametresPage;

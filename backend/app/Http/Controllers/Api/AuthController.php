@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Formateur;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -177,13 +178,20 @@ class AuthController extends Controller
     public function changePassword(Request $request)
     {
         $request->validate([
-            'old_password' => 'required|string',
             'new_password' => 'required|string|min:8|confirmed',
         ]);
 
+        $old = $request->input('old_password') ?? $request->input('current_password');
+        if (!$old) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ancien mot de passe requis',
+            ], 422);
+        }
+
         $user = $request->user();
 
-        if (!Hash::check($request->old_password, $user->password)) {
+        if (!Hash::check($old, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Ancien mot de passe incorrect',
@@ -195,6 +203,44 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Mot de passe mis à jour',
+        ]);
+    }
+
+    public function formateur(Request $request)
+    {
+        $user = $request->user();
+        if ($user->role !== 'formateur') {
+            return response()->json([
+                'success' => false,
+                'message' => 'User is not a formateur',
+            ], 403);
+        }
+
+        $formateur = Formateur::where('user_id', $user->id)
+            ->with(['modules.filiere'])
+            ->withCount([
+                'examens as examens_a_venir_count' => function ($q) {
+                    $q->where('date_examen', '>=', now()->toDateString());
+                },
+            ])
+            ->first();
+
+        if (!$formateur) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Formateur record not found',
+            ], 404);
+        }
+
+        // Count unique stagiaires in groups this formateur has exams for
+        $groupIds = \App\Models\Examen::where('formateur_id', $formateur->id)
+            ->pluck('group_id')
+            ->unique();
+        $formateur->total_stagiaires = \App\Models\Stagiaire::whereIn('group_id', $groupIds)->count();
+
+        return response()->json([
+            'success' => true,
+            'data' => $formateur,
         ]);
     }
 }

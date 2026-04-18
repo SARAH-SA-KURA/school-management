@@ -30,9 +30,12 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     // Auth
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::get('/auth/formateur', [AuthController::class, 'formateur']);
+    Route::get('/auth/stagiaire', [StagiaireController::class, 'stagiaire']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/profile', [AuthController::class, 'updateProfile']);
     Route::post('/auth/password', [AuthController::class, 'changePassword']);
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
     // Dashboard
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
@@ -45,13 +48,21 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('groups', GroupController::class);
     Route::get('/groups-all', [GroupController::class, 'all']);
+    Route::get('/groups/{group}/stagiaires', [GroupController::class, 'stagiaires']);
 
     Route::apiResource('modules', ModuleController::class);
     Route::apiResource('salles', SalleController::class);
     Route::get('/salles-all', [SalleController::class, 'all']);
 
     Route::apiResource('formateurs', FormateurController::class);
+    Route::get('/formateurs/{formateur}/modules', [FormateurController::class, 'modules']);
+
     Route::apiResource('stagiaires', StagiaireController::class);
+    Route::get('/stagiaire/stats', [StagiaireController::class, 'stats']);
+    Route::get('/stagiaire/absences', [StagiaireController::class, 'absences']);
+    Route::get('/stagiaire/emploi', [StagiaireController::class, 'emploi']);
+    Route::get('/stagiaire/exams', [StagiaireController::class, 'exams']);
+    Route::get('/stagiaire/modules', [StagiaireController::class, 'modules']);
 
     Route::apiResource('examens', ExamenController::class);
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../contexts/ThemeContext';
 import { ROLES } from '../../utils/constants';
 import {
   HiHome,
@@ -32,6 +33,7 @@ interface NavGroup {
 
 const Sidebar: React.FC = () => {
   const { user } = useAuth();
+  const { isDark } = useTheme();
 
   const getNavGroups = (): NavGroup[] => {
     if (!user) return [];
@@ -177,35 +179,38 @@ const Sidebar: React.FC = () => {
   const navGroups = getNavGroups();
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 w-56 bg-white border-r border-gray-200 flex flex-col">
+    <aside className="fixed inset-y-0 left-0 z-30 w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-colors">
       {/* Logo */}
       <div className="flex items-center gap-2 px-5 py-4">
-        <img src="/images/logo.png" alt="MACOMPUS" className="h-8" />
+        <img src={isDark ? '/images/logo-dark.png' : '/images/logo.png'} alt="MACOMPUS" className="h-8" />
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-2 overflow-y-auto">
         {navGroups.map((group, idx) => (
-          <div key={group.title} className={idx > 0 ? 'mt-4' : ''}>
-            <p className="px-3 mb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">
-              {group.title}
-            </p>
-            <div className="space-y-0.5">
+          <div key={group.title} className={idx > 0 ? 'mt-5' : ''}>
+            <div className="flex items-center gap-2 px-3 mb-3">
+              <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-[0.12em] whitespace-nowrap">
+                {group.title}
+              </p>
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+            </div>
+            <div className="space-y-1">
               {group.items.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                       isActive
-                        ? 'bg-primary-50 text-primary-600 font-medium'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 font-semibold'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
                     }`
                   }
                 >
                   {item.icon}
                   <span className="flex-1">{item.label}</span>
-                  {item.hasSubmenu && <HiChevronRight className="h-4 w-4 text-gray-400" />}
+                  {item.hasSubmenu && <HiChevronRight className="h-4 w-4 text-gray-400 dark:text-gray-600" />}
                 </NavLink>
               ))}
             </div>

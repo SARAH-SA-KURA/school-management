@@ -49,7 +49,7 @@ const FilieresPage: React.FC = () => {
       label: 'Code',
       sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium">{item.code}</span>
+        <span className="text-primary-600 dark:text-primary-400 font-medium">{item.code}</span>
       ),
     },
     { key: 'nom', label: 'Nom de filière', sortable: true },
@@ -77,11 +77,11 @@ const FilieresPage: React.FC = () => {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Filières</h1>
-        <p className="text-sm text-gray-500">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Filières</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
           {' / '}
-          <span className="text-primary-600">Académique</span>
+          <span className="text-primary-600 dark:text-primary-400">Académique</span>
           {' / '}
           <span>Filières</span>
         </p>
@@ -102,11 +102,11 @@ const FilieresPage: React.FC = () => {
         perPage={perPage}
         onPerPageChange={handlePerPageChange}
         headerContent={
-          <h3 className="text-lg font-semibold text-gray-900">Tous les Filières</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Tous les Filières</h3>
         }
         toolbarExtra={
           <button onClick={toggleSort}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <HiSortAscending className="h-4 w-4" /> Sort By {sortDir === 'asc' ? 'A-Z' : 'Z-A'}
           </button>
         }

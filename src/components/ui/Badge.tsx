@@ -9,11 +9,11 @@ interface BadgeProps {
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
-  primary: 'bg-primary-100 text-primary-700',
-  success: 'bg-success-100 text-success-700',
-  warning: 'bg-warning-100 text-warning-600',
-  danger: 'bg-danger-100 text-danger-700',
-  gray: 'bg-gray-100 text-gray-700',
+  primary: 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400',
+  success: 'bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400',
+  warning: 'bg-warning-100 dark:bg-warning-900/30 text-warning-600 dark:text-warning-400',
+  danger: 'bg-danger-100 dark:bg-danger-900/30 text-danger-700 dark:text-danger-400',
+  gray: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300',
 };
 
 const Badge: React.FC<BadgeProps> = ({ children, variant = 'gray', className = '' }) => {

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\{User, Filiere, Group, Module, Salle, Formateur, Stagiaire, EmploiDuTemps, Examen, Note, Absence};
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
@@ -114,6 +115,26 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        // ──────────────── Clear all data first (disable FKs) ────────────────
+        $driver = DB::connection()->getDriverName();
+        if ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF');
+        }
+        foreach (['notes','absences','emploi_du_temps','stagiaires','formateur_module','formateurs','groups','salles','modules','filieres','users'] as $t) {
+            if ($driver === 'sqlite') {
+                DB::table($t)->delete();
+            } else {
+                DB::table($t)->truncate();
+            }
+        }
+        if ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON');
+        }
+
         // ──────────────── Fixed accounts ────────────────
 
         $admin = User::create([

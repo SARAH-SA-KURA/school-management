@@ -45,7 +45,7 @@ const ProfileModal: React.FC<{ formateur: any; onClose: () => void }> = ({ forma
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="bg-gray-900 rounded-t-2xl px-6 py-5 text-white relative">
           <button onClick={onClose} className="absolute top-4 right-4 text-white/70 hover:text-white">
@@ -58,7 +58,7 @@ const ProfileModal: React.FC<{ formateur: any; onClose: () => void }> = ({ forma
               <p className="text-sm text-gray-300">{f.matricule}</p>
             </div>
           </div>
-          <span className="absolute top-5 right-14 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+          <span className="absolute top-5 right-14 px-3 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
             {f.is_active ? 'Actif' : 'Inactif'}
           </span>
         </div>
@@ -67,99 +67,99 @@ const ProfileModal: React.FC<{ formateur: any; onClose: () => void }> = ({ forma
         <div className="p-6 space-y-5">
           {/* Personal Info */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Informations personnelles</h3>
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Informations personnelles</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-start gap-3">
-                <HiIdentification className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiIdentification className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Matricule</p>
-                  <p className="text-sm font-medium text-gray-900">{f.matricule}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Matricule</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{f.matricule}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiAcademicCap className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiAcademicCap className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Spécialisation</p>
-                  <p className="text-sm font-medium text-gray-900">{f.specialisation || '-'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Spécialisation</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{f.specialisation || '-'}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiCalendar className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiCalendar className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Date de recrutement</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(f.date_recrutement)}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Date de recrutement</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{formatDate(f.date_recrutement)}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiPhone className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiPhone className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Téléphone</p>
-                  <p className="text-sm font-medium text-gray-900">{f.user?.telephone || '-'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Téléphone</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{f.user?.telephone || '-'}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 col-span-2">
-                <HiMail className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiMail className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Email</p>
-                  <p className="text-sm font-medium text-gray-900">{f.user?.email}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Email</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{f.user?.email}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <hr className="border-gray-100" />
+          <hr className="border-gray-100 dark:border-gray-700" />
 
           {/* Filières */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
               Filières ({filiereNames.length})
             </h3>
             {filiereNames.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {filiereNames.map((name: string) => (
-                  <span key={name} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                  <span key={name} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-100 dark:border-purple-800">
                     {name}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">Aucune filière assignée</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">Aucune filière assignée</p>
             )}
           </div>
 
-          <hr className="border-gray-100" />
+          <hr className="border-gray-100 dark:border-gray-700" />
 
           {/* Modules */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
               Modules ({modules.length})
             </h3>
             {modules.length > 0 ? (
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {modules.map((m: any) => (
-                  <div key={m.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5">
+                  <div key={m.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-4 py-2.5">
                     <div className="flex items-center gap-3">
-                      <HiBookOpen className="h-4 w-4 text-primary-500" />
+                      <HiBookOpen className="h-4 w-4 text-primary-500 dark:text-primary-400" />
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{m.nom}</p>
-                        <p className="text-xs text-gray-500">{m.code} · S{m.semestre}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{m.nom}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{m.code} · S{m.semestre}</p>
                       </div>
                     </div>
-                    <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded border border-gray-100">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-1 rounded border border-gray-100 dark:border-gray-700">
                       {m.filiere?.nom || '-'}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">Aucun module assigné</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">Aucun module assigné</p>
             )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700">
+          <button onClick={onClose} className="w-full py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
             Fermer
           </button>
         </div>
@@ -225,7 +225,7 @@ const FormateursPage: React.FC = () => {
       label: 'ID',
       sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium">{item.matricule}</span>
+        <span className="text-primary-600 dark:text-primary-400 font-medium">{item.matricule}</span>
       ),
     },
     {
@@ -233,7 +233,7 @@ const FormateursPage: React.FC = () => {
       label: 'Nom Complet',
       sortable: true,
       render: (item) => (
-        <span className="text-gray-900">{item.user?.prenom} {item.user?.nom}</span>
+        <span className="text-gray-900 dark:text-gray-100">{item.user?.prenom} {item.user?.nom}</span>
       ),
     },
     {
@@ -280,11 +280,11 @@ const FormateursPage: React.FC = () => {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Formateurs</h1>
-        <p className="text-sm text-gray-500">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Formateurs</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
           {' / '}
-          <span className="text-primary-600">Personnes</span>
+          <span className="text-primary-600 dark:text-primary-400">Personnes</span>
           {' / '}
           <span>Formateurs</span>
         </p>
@@ -305,11 +305,11 @@ const FormateursPage: React.FC = () => {
         perPage={perPage}
         onPerPageChange={handlePerPageChange}
         headerContent={
-          <h3 className="text-lg font-semibold text-gray-900">Tous les Formateurs</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Tous les Formateurs</h3>
         }
         toolbarExtra={
           <button onClick={toggleSort}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <HiSortAscending className="h-4 w-4" /> Sort By {sortDir === 'asc' ? 'A-Z' : 'Z-A'}
           </button>
         }
@@ -323,7 +323,7 @@ const FormateursPage: React.FC = () => {
         profileLoading ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/50" />
-            <div className="relative bg-white rounded-2xl p-8"><Spinner size="lg" /></div>
+            <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-8"><Spinner size="lg" /></div>
           </div>
         ) : (
           <ProfileModal formateur={profileData} onClose={() => setProfileData(null)} />

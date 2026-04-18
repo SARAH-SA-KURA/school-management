@@ -154,8 +154,8 @@ const ExamensPage: React.FC = () => {
 
   const SortIcon = ({ col }: { col: string }) => (
     <span className="inline-flex flex-col ml-1 -space-y-1">
-      <HiChevronUp className={`h-3 w-3 ${sortKey === col && sortDir === 'asc' ? 'text-primary-600' : 'text-gray-300'}`} />
-      <HiChevronDown className={`h-3 w-3 ${sortKey === col && sortDir === 'desc' ? 'text-primary-600' : 'text-gray-300'}`} />
+      <HiChevronUp className={`h-3 w-3 ${sortKey === col && sortDir === 'asc' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-300 dark:text-gray-600'}`} />
+      <HiChevronDown className={`h-3 w-3 ${sortKey === col && sortDir === 'desc' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-300 dark:text-gray-600'}`} />
     </span>
   );
 
@@ -220,42 +220,42 @@ const ExamensPage: React.FC = () => {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Examens & notes</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Examens & notes</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
           {' / '}
-          <span className="text-primary-600">Académique</span>
+          <span className="text-primary-600 dark:text-primary-400">Académique</span>
           {' / '}
           <span>Examens & notes</span>
         </p>
       </div>
 
       {/* Main Card */}
-      <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
         {/* Card Header */}
         <div className="px-6 pt-5 pb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Examens & notes</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Examens & notes</h2>
         </div>
 
         {/* Filters Row */}
         <div className="flex items-center gap-4 px-6 pb-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Filières</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">Filières</span>
             <select
               value={selectedFiliere}
               onChange={(e) => handleFiliereChange(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white min-w-[160px]"
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px]"
             >
               <option value="">Choisir filière</option>
               {filieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Groupes</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">Groupes</span>
             <select
               value={selectedGroupe}
               onChange={(e) => handleGroupeChange(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white min-w-[120px]"
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[120px]"
               disabled={!selectedFiliere}
             >
               <option value="">Choisir groupe</option>
@@ -263,11 +263,11 @@ const ExamensPage: React.FC = () => {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Modules</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">Modules</span>
             <select
               value={selectedModule}
               onChange={(e) => handleModuleChange(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white min-w-[180px]"
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[180px]"
               disabled={!selectedGroupe}
             >
               <option value="">Choisir module</option>
@@ -275,19 +275,19 @@ const ExamensPage: React.FC = () => {
             </select>
           </div>
           <div className="relative ml-auto">
-            <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
             <input
               type="text"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Search"
-              className="text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 bg-white min-w-[160px] outline-none placeholder-gray-400"
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px] outline-none placeholder-gray-400 dark:placeholder-gray-500"
             />
           </div>
           <button
             onClick={handleExport}
             disabled={sortedStudents.length === 0}
-            className="flex items-center gap-2 text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <HiDownload className="h-4 w-4" /> Export
           </button>
@@ -297,13 +297,13 @@ const ExamensPage: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50/50 border-y border-gray-100">
+              <tr className="bg-gray-50/50 dark:bg-gray-800/60 border-y border-gray-100 dark:border-gray-700">
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
                     checked={selectedIds.size === pagedStudents.length && pagedStudents.length > 0}
                     onChange={toggleAll}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                   />
                 </th>
                 {[
@@ -316,7 +316,7 @@ const ExamensPage: React.FC = () => {
                 ].map(col => (
                   <th
                     key={col.key}
-                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer select-none"
+                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 cursor-pointer select-none"
                     onClick={() => handleSort(col.key)}
                   >
                     <span className="inline-flex items-center">
@@ -327,12 +327,12 @@ const ExamensPage: React.FC = () => {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
               {!allFiltersSelected ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-16 text-center text-gray-400 dark:text-gray-500">
                     <div className="flex flex-col items-center gap-2">
-                      <svg className="h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-10 w-10 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <p className="text-sm">Veuillez sélectionner une filière, un groupe et un module pour afficher les notes</p>
@@ -340,28 +340,28 @@ const ExamensPage: React.FC = () => {
                   </td>
                 </tr>
               ) : loading ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Chargement...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Chargement...</td></tr>
               ) : pagedStudents.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Aucune note trouvée</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Aucune note trouvée</td></tr>
               ) : (
                 pagedStudents.map((student) => (
-                  <tr key={student.stagiaire_id} className="hover:bg-gray-50/50">
+                  <tr key={student.stagiaire_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-3.5">
                       <input
                         type="checkbox"
                         checked={selectedIds.has(student.stagiaire_id)}
                         onChange={() => toggleOne(student.stagiaire_id)}
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                       />
                     </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-900 font-medium">
+                    <td className="px-4 py-3.5 text-sm text-gray-900 dark:text-gray-100 font-medium">
                       {student.prenom} {student.nom}
                     </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600">{student.cc1 ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600">{student.cc2 ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600">{student.cc3 ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600">{student.efm ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{student.moyenne ?? '-'}</td>
+                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{student.cc1 ?? '-'}</td>
+                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{student.cc2 ?? '-'}</td>
+                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{student.cc3 ?? '-'}</td>
+                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{student.efm ?? '-'}</td>
+                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 dark:text-gray-100">{student.moyenne ?? '-'}</td>
                   </tr>
                 ))
               )}
@@ -371,18 +371,18 @@ const ExamensPage: React.FC = () => {
 
         {/* Pagination */}
         {allFiltersSelected && sortedStudents.length > 0 && (
-          <div className="flex items-center justify-end px-6 py-4 border-t border-gray-100">
+          <div className="flex items-center justify-end px-6 py-4 border-t border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1.5 text-sm text-gray-500 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Pre
               </button>
               {paginationRange.map((item, idx) =>
                 typeof item === 'string' ? (
-                  <span key={`dots-${idx}`} className="px-2 py-1.5 text-sm text-gray-400">
+                  <span key={`dots-${idx}`} className="px-2 py-1.5 text-sm text-gray-400 dark:text-gray-500">
                     ....
                   </span>
                 ) : (
@@ -392,7 +392,7 @@ const ExamensPage: React.FC = () => {
                     className={`w-8 h-8 rounded-lg text-sm font-medium ${
                       page === item
                         ? 'bg-primary-600 text-white'
-                        : 'text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                   >
                     {item}
@@ -402,7 +402,7 @@ const ExamensPage: React.FC = () => {
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="px-3 py-1.5 text-sm text-primary-600 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next
               </button>

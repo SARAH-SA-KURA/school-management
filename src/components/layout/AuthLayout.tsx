@@ -1,5 +1,6 @@
 import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const illustrationMap: Record<string, string> = {
   '/login': '/images/auth-login.png',
@@ -11,11 +12,12 @@ const illustrationMap: Record<string, string> = {
 
 const AuthLayout: React.FC = () => {
   const location = useLocation();
+  const { isDark } = useTheme();
   const basePath = '/' + location.pathname.split('/')[1];
   const illustration = illustrationMap[basePath] || '/images/auth-login.png';
 
   return (
-    <div className="min-h-screen flex bg-white">
+    <div className="min-h-screen flex bg-white dark:bg-gray-950 transition-colors">
       {/* Left side - Illustration */}
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
         <img
@@ -30,11 +32,11 @@ const AuthLayout: React.FC = () => {
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <img src="/images/logo.png" alt="MACOMPUS" className="h-12" />
+            <img src={isDark ? '/images/logo-dark.png' : '/images/logo.png'} alt="MACOMPUS" className="h-12" />
           </div>
 
           {/* Form Card */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-8">
             <Outlet />
           </div>
         </div>

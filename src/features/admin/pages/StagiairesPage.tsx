@@ -47,7 +47,7 @@ const ProfileModal: React.FC<{ stagiaire: any; onClose: () => void }> = ({ stagi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="bg-gray-900 rounded-t-2xl px-6 py-5 text-white relative">
           <button onClick={onClose} className="absolute top-4 right-4 text-white/70 hover:text-white">
@@ -60,7 +60,7 @@ const ProfileModal: React.FC<{ stagiaire: any; onClose: () => void }> = ({ stagi
               <p className="text-sm text-gray-300">{s.cef}</p>
             </div>
           </div>
-          <span className={`absolute top-5 right-14 px-3 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+          <span className={`absolute top-5 right-14 px-3 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text} dark:bg-opacity-20`}>
             {status.label}
           </span>
         </div>
@@ -69,78 +69,78 @@ const ProfileModal: React.FC<{ stagiaire: any; onClose: () => void }> = ({ stagi
         <div className="p-6 space-y-5">
           {/* Personal Info */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Informations personnelles</h3>
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Informations personnelles</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-start gap-3">
-                <HiIdentification className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiIdentification className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">CIN</p>
-                  <p className="text-sm font-medium text-gray-900">{s.cin}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">CIN</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.cin}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiIdentification className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiIdentification className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">CNE</p>
-                  <p className="text-sm font-medium text-gray-900">{s.cne}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">CNE</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.cne}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiCalendar className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiCalendar className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Date de naissance</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(s.date_naissance)}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Date de naissance</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{formatDate(s.date_naissance)}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiPhone className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiPhone className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Téléphone</p>
-                  <p className="text-sm font-medium text-gray-900">{s.user?.telephone || '-'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Téléphone</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.user?.telephone || '-'}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 col-span-2">
-                <HiMail className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiMail className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Email</p>
-                  <p className="text-sm font-medium text-gray-900">{s.user?.email}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Email</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.user?.email}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 col-span-2">
-                <HiLocationMarker className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiLocationMarker className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Adresse</p>
-                  <p className="text-sm font-medium text-gray-900">{s.adresse || '-'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Adresse</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.adresse || '-'}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <hr className="border-gray-100" />
+          <hr className="border-gray-100 dark:border-gray-700" />
 
           {/* Academic Info */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Informations académiques</h3>
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Informations académiques</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-start gap-3">
-                <HiUserGroup className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiUserGroup className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Groupe</p>
-                  <p className="text-sm font-medium text-gray-900">{s.group?.nom || '-'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Groupe</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.group?.nom || '-'}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiAcademicCap className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiAcademicCap className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Filière</p>
-                  <p className="text-sm font-medium text-gray-900">{s.group?.filiere?.nom || '-'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Filière</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.group?.filiere?.nom || '-'}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <HiCalendar className="h-5 w-5 text-gray-400 mt-0.5" />
+                <HiCalendar className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
                 <div>
-                  <p className="text-xs text-gray-500">Date d'inscription</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(s.date_inscription)}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Date d'inscription</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{formatDate(s.date_inscription)}</p>
                 </div>
               </div>
             </div>
@@ -149,22 +149,22 @@ const ProfileModal: React.FC<{ stagiaire: any; onClose: () => void }> = ({ stagi
           {/* Absences summary */}
           {s.absences && s.absences.length > 0 && (
             <>
-              <hr className="border-gray-100" />
+              <hr className="border-gray-100 dark:border-gray-700" />
               <div>
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
                   Absences ({s.absences.length})
                 </h3>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {s.absences.slice(0, 5).map((a: any) => (
-                    <div key={a.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2">
+                    <div key={a.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-4 py-2">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{a.module?.nom || 'Module'}</p>
-                        <p className="text-xs text-gray-500">{formatDate(a.date_absence)} - {a.heure_debut}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{a.module?.nom || 'Module'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(a.date_absence)} - {a.heure_debut}</p>
                       </div>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        a.status === 'justifiee' ? 'bg-green-100 text-green-700' :
-                        a.status === 'en_attente' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
+                        a.status === 'justifiee' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                        a.status === 'en_attente' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                       }`}>
                         {a.status === 'justifiee' ? 'Justifiée' : a.status === 'en_attente' ? 'En attente' : 'Non justifiée'}
                       </span>
@@ -177,8 +177,8 @@ const ProfileModal: React.FC<{ stagiaire: any; onClose: () => void }> = ({ stagi
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700">
+          <button onClick={onClose} className="w-full py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
             Fermer
           </button>
         </div>
@@ -247,7 +247,7 @@ const StagiairesPage: React.FC = () => {
       label: 'ID',
       sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium">{item.cef}</span>
+        <span className="text-primary-600 dark:text-primary-400 font-medium">{item.cef}</span>
       ),
     },
     {
@@ -255,7 +255,7 @@ const StagiairesPage: React.FC = () => {
       label: 'Nom Complet',
       sortable: true,
       render: (item) => (
-        <span className="text-gray-900">{item.user?.prenom} {item.user?.nom}</span>
+        <span className="text-gray-900 dark:text-gray-100">{item.user?.prenom} {item.user?.nom}</span>
       ),
     },
     {
@@ -299,11 +299,11 @@ const StagiairesPage: React.FC = () => {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Stagiaires</h1>
-        <p className="text-sm text-gray-500">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Stagiaires</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
           {' / '}
-          <span className="text-primary-600">Personnes</span>
+          <span className="text-primary-600 dark:text-primary-400">Personnes</span>
           {' / '}
           <span>Stagiaires</span>
         </p>
@@ -324,11 +324,11 @@ const StagiairesPage: React.FC = () => {
         perPage={perPage}
         onPerPageChange={handlePerPageChange}
         headerContent={
-          <h3 className="text-lg font-semibold text-gray-900">Tous les stagiaires</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Tous les stagiaires</h3>
         }
         toolbarExtra={
           <button onClick={toggleSort}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <HiSortAscending className="h-4 w-4" /> Sort By {sortDir === 'asc' ? 'A-Z' : 'Z-A'}
           </button>
         }
@@ -342,9 +342,9 @@ const StagiairesPage: React.FC = () => {
         profileLoading ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/50" />
-            <div className="relative bg-white rounded-xl p-8 shadow-xl">
+            <div className="relative bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl">
               <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto" />
-              <p className="text-sm text-gray-500 mt-3">Chargement du profil...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">Chargement du profil...</p>
             </div>
           </div>
         ) : (

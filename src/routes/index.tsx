@@ -29,12 +29,14 @@ import FormateurModulesPage from '../features/formateur/pages/FormateurModulesPa
 import FormateurEmploiPage from '../features/formateur/pages/FormateurEmploiPage';
 import FormateurExamensPage from '../features/formateur/pages/FormateurExamensPage';
 import FormateurAbsencesPage from '../features/formateur/pages/FormateurAbsencesPage';
+import FormateurParametresPage from '../features/formateur/pages/FormateurParametresPage';
 
 import StagiaireDashboardPage from '../features/stagiaire/pages/StagiaireDashboardPage';
 import StagiaireModulesPage from '../features/stagiaire/pages/StagiaireModulesPage';
 import StagiaireEmploiPage from '../features/stagiaire/pages/StagiaireEmploiPage';
 import StagiaireAbsencesPage from '../features/stagiaire/pages/StagiaireAbsencesPage';
 import StagiaireExamensPage from '../features/stagiaire/pages/StagiaireExamensPage';
+import StagiaireParametresPage from '../features/stagiaire/pages/StagiaireParametresPage';
 
 import SurveillantExamensPage from '../features/surveillant/pages/SurveillantExamensPage';
 import SurveillantEmploiPage from '../features/surveillant/pages/SurveillantEmploiPage';
@@ -90,7 +92,7 @@ const router = createBrowserRouter([
       { path: '/formateur/emploi-du-temps', element: <FormateurEmploiPage /> },
       { path: '/formateur/examens', element: <FormateurExamensPage /> },
       { path: '/formateur/absences', element: <FormateurAbsencesPage /> },
-      { path: '/formateur/parametres', element: <ParametresPage /> },
+      { path: '/formateur/parametres', element: <FormateurParametresPage /> },
     ],
   },
 
@@ -103,7 +105,7 @@ const router = createBrowserRouter([
       { path: '/stagiaire/emploi-du-temps', element: <StagiaireEmploiPage /> },
       { path: '/stagiaire/absences', element: <StagiaireAbsencesPage /> },
       { path: '/stagiaire/examens', element: <StagiaireExamensPage /> },
-      { path: '/stagiaire/parametres', element: <ParametresPage /> },
+      { path: '/stagiaire/parametres', element: <StagiaireParametresPage /> },
     ],
   },
 

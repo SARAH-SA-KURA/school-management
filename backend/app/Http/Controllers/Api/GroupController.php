@@ -83,4 +83,10 @@ class GroupController extends Controller
         }
         return $this->success($query->get(['id', 'nom', 'filiere_id']));
     }
+
+    public function stagiaires(Group $group)
+    {
+        $stagiaires = $group->stagiaires()->with(['user'])->get();
+        return $this->success($stagiaires);
+    }
 }

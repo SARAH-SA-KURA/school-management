@@ -14,9 +14,9 @@ const BACKEND_URL = (process.env.REACT_APP_API_URL || 'http://localhost:8000/api
 
 const statusBadge = (status: string) => {
   const styles: Record<string, string> = {
-    non_justifiee: 'bg-red-50 text-red-600',
-    justifiee: 'bg-green-50 text-green-700',
-    en_attente: 'bg-yellow-50 text-yellow-700',
+    non_justifiee: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+    justifiee: 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    en_attente: 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
   };
   const labels: Record<string, string> = {
     non_justifiee: 'Non justifiée',
@@ -24,7 +24,7 @@ const statusBadge = (status: string) => {
     en_attente: 'En attente',
   };
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
       {labels[status] || status}
     </span>
   );
@@ -69,7 +69,7 @@ const AbsencesPage: React.FC = () => {
   // Motif column rendering based on status
   const renderMotif = (item: Absence) => {
     if (item.status === 'non_justifiee') {
-      return <span className="text-gray-400">-</span>;
+      return <span className="text-gray-400 dark:text-gray-500">-</span>;
     }
     if (item.status === 'justifiee') {
       const docUrl = item.justification
@@ -78,24 +78,24 @@ const AbsencesPage: React.FC = () => {
       return docUrl ? (
         <button
           onClick={(e) => { e.stopPropagation(); setPreviewDoc(docUrl); }}
-          className="flex items-center gap-1.5 text-primary-600 hover:text-primary-700 transition-colors"
+          className="flex items-center gap-1.5 text-primary-600 dark:text-primary-400 hover:text-primary-700 transition-colors"
           title="Voir le justificatif"
         >
           <HiDocumentText className="h-5 w-5" />
           <span className="text-xs underline">Justificatif</span>
         </button>
       ) : (
-        <span className="text-gray-400">-</span>
+        <span className="text-gray-400 dark:text-gray-500">-</span>
       );
     }
     if (item.status === 'en_attente') {
       return (
-        <span className="text-sm text-gray-700 max-w-[200px] truncate block" title={item.motif || ''}>
+        <span className="text-sm text-gray-700 dark:text-gray-300 max-w-[200px] truncate block" title={item.motif || ''}>
           {item.motif || '-'}
         </span>
       );
     }
-    return <span className="text-gray-400">-</span>;
+    return <span className="text-gray-400 dark:text-gray-500">-</span>;
   };
 
   const columns: TableColumn<Absence>[] = [
@@ -104,7 +104,7 @@ const AbsencesPage: React.FC = () => {
       label: 'ID',
       sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium">ABS-{String(item.id).padStart(3, '0')}</span>
+        <span className="text-primary-600 dark:text-primary-400 font-medium">ABS-{String(item.id).padStart(3, '0')}</span>
       ),
     },
     {
@@ -150,11 +150,11 @@ const AbsencesPage: React.FC = () => {
     <div>
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Absences</h1>
-        <p className="text-sm text-gray-500">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Absences</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
           {' / '}
-          <span className="text-primary-600">Gestion</span>
+          <span className="text-primary-600 dark:text-primary-400">Gestion</span>
           {' / '}
           <span>Absences</span>
         </p>
@@ -162,17 +162,17 @@ const AbsencesPage: React.FC = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-sm text-gray-500">Total Absences</p>
-          <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Total Absences</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{totalItems}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-sm text-gray-500">Non justifiées</p>
-          <p className="text-2xl font-bold text-red-600">{data.filter(a => a.status === 'non_justifiee').length}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Non justifiées</p>
+          <p className="text-2xl font-bold text-red-600 dark:text-red-400">{data.filter(a => a.status === 'non_justifiee').length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-sm text-gray-500">En attente</p>
-          <p className="text-2xl font-bold text-yellow-600">{data.filter(a => a.status === 'en_attente').length}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">En attente</p>
+          <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{data.filter(a => a.status === 'en_attente').length}</p>
         </div>
       </div>
 
@@ -194,14 +194,14 @@ const AbsencesPage: React.FC = () => {
         onSearchChange={(val) => { setSearch(val); setPage(1); }}
         headerContent={
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Absences</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Absences</h3>
           </div>
         }
         toolbarExtra={
           <select
             value={filterStatus}
             onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white"
+            className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800"
           >
             <option value="">Tous les statuts</option>
             <option value="non_justifiee">Non justifiée</option>
@@ -214,10 +214,10 @@ const AbsencesPage: React.FC = () => {
       {/* Document Preview Modal */}
       {previewDoc && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setPreviewDoc(null)}>
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Justificatif</h3>
-              <button onClick={() => setPreviewDoc(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Justificatif</h3>
+              <button onClick={() => setPreviewDoc(null)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <HiX className="h-5 w-5" />
               </button>
             </div>

@@ -130,4 +130,10 @@ class FormateurController extends Controller
 
         return $this->success(null, 'Formateur désactivé');
     }
+
+    public function modules(Formateur $formateur)
+    {
+        $modules = $formateur->modules()->get();
+        return $this->success($modules);
+    }
 }

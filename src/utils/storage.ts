@@ -10,8 +10,13 @@ export const storage = {
   setUser: (user: object): void => localStorage.setItem('user', JSON.stringify(user)),
   removeUser: (): void => localStorage.removeItem('user'),
 
+  getAvatar: (): string | null => localStorage.getItem('userAvatar'),
+  setAvatar: (base64: string): void => localStorage.setItem('userAvatar', base64),
+  removeAvatar: (): void => localStorage.removeItem('userAvatar'),
+
   clear: (): void => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('userAvatar');
   },
 };

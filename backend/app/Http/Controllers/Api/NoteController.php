@@ -13,7 +13,7 @@ class NoteController extends Controller
 
     public function index(Request $request)
     {
-        $query = Note::with(['stagiaire.user', 'examen.module']);
+        $query = Note::with(['stagiaire.user', 'stagiaire.group', 'examen.module']);
 
         if ($request->has('examen_id')) {
             $query->where('examen_id', $request->examen_id);

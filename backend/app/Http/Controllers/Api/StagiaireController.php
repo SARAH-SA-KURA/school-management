@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Stagiaire;
 use App\Models\User;
+use App\Models\Note;
+use App\Models\Absence;
+use App\Models\EmploiDuTemps;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -136,5 +139,241 @@ class StagiaireController extends Controller
         });
 
         return $this->success(null, 'Stagiaire désactivé');
+    }
+
+    // Stagiaire-specific endpoints
+    public function stagiaire(Request $request)
+    {
+        $user = $request->user();
+        if ($user->role !== 'stagiaire') {
+            return response()->json(['success' => false, 'message' => 'User is not a stagiaire'], 403);
+        }
+
+        $stagiaire = Stagiaire::where('user_id', $user->id)
+            ->with(['user', 'group.filiere'])
+            ->first();
+
+        if (!$stagiaire) {
+            return response()->json(['success' => false, 'message' => 'Stagiaire record not found'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $stagiaire]);
+    }
+
+    public function stats(Request $request)
+    {
+        $user = $request->user();
+        $stagiaire = Stagiaire::where('user_id', $user->id)->with('group')->first();
+
+        if (!$stagiaire) {
+            return response()->json(['success' => false, 'message' => 'Stagiaire not found'], 404);
+        }
+
+        $totalAbsences = Absence::where('stagiaire_id', $stagiaire->id)->count();
+
+        $upcomingExams = \App\Models\Examen::where('group_id', $stagiaire->group_id)
+            ->where('date_examen', '>', now())
+            ->count();
+
+        // Modules come from the group's filiere (no direct group_module pivot)
+        $activeModules = \App\Models\Module::where('filiere_id', $stagiaire->group->filiere_id)
+            ->where('is_active', true)
+            ->count();
+
+        return $this->success([
+            'total_absences'  => $totalAbsences,
+            'upcoming_exams'  => $upcomingExams,
+            'active_modules'  => $activeModules,
+            'overall_average' => $this->calculateOverallAverage($stagiaire->id),
+        ]);
+    }
+
+    public function absences(Request $request)
+    {
+        $user = $request->user();
+        $stagiaire = Stagiaire::where('user_id', $user->id)->with('group')->first();
+
+        if (!$stagiaire) {
+            return response()->json(['success' => false, 'message' => 'Stagiaire not found'], 404);
+        }
+
+        $absenceRecords = Absence::where('stagiaire_id', $stagiaire->id)
+            ->with(['module'])
+            ->orderBy('date_absence', 'desc')
+            ->get();
+
+        // Calculate stats from actual time durations
+        $totalHours = 0;
+        $justifiedHours = 0;
+        $unjustifiedHours = 0;
+        $justifiedCount = 0;
+        $unjustifiedCount = 0;
+
+        $absences = $absenceRecords->map(function ($a) use (&$totalHours, &$justifiedHours, &$unjustifiedHours, &$justifiedCount, &$unjustifiedCount) {
+            $start = \Carbon\Carbon::createFromTimeString($a->heure_debut);
+            $end   = \Carbon\Carbon::createFromTimeString($a->heure_fin);
+            $hours = $end->diffInMinutes($start) / 60;
+
+            $totalHours += $hours;
+            if ($a->status === 'justifiee') {
+                $justifiedHours += $hours;
+                $justifiedCount++;
+            } else {
+                $unjustifiedHours += $hours;
+                $unjustifiedCount++;
+            }
+
+            // Try to find the formateur for this module in the group's schedule
+            $formateur = EmploiDuTemps::where('group_id', $a->stagiaire->group_id ?? null)
+                ->where('module_id', $a->module_id)
+                ->with('formateur.user')
+                ->first()?->formateur?->user;
+
+            return [
+                'id'          => $a->id,
+                'date'        => $a->date_absence?->format('Y-m-d'),
+                'heures_debut'=> $a->heure_debut,
+                'heures_fin'  => $a->heure_fin,
+                'module'      => $a->module ? ['nom' => $a->module->nom] : ['nom' => 'N/A'],
+                'formateur'   => $formateur
+                    ? ['nom' => $formateur->nom, 'prenom' => $formateur->prenom]
+                    : ['nom' => '', 'prenom' => ''],
+                'statut'      => $a->status,
+            ];
+        });
+
+        return $this->success([
+            'absences' => $absences,
+            'stats'    => [
+                'total_absences_hours'  => round($totalHours, 2),
+                'total_absences_count'  => $absenceRecords->count(),
+                'justified_hours'       => round($justifiedHours, 2),
+                'justified_count'       => $justifiedCount,
+                'unjustified_hours'     => round($unjustifiedHours, 2),
+                'unjustified_count'     => $unjustifiedCount,
+                'max_allowed_hours'     => 72,
+                'warning_threshold'     => 36,
+                'suspension_threshold'  => 54,
+            ],
+        ]);
+    }
+
+    public function emploi(Request $request)
+    {
+        $user = $request->user();
+        $stagiaire = Stagiaire::where('user_id', $user->id)->first();
+
+        if (!$stagiaire) {
+            return response()->json(['success' => false, 'message' => 'Stagiaire not found'], 404);
+        }
+
+        $emplois = EmploiDuTemps::where('group_id', $stagiaire->group_id)
+            ->with(['module', 'formateur.user', 'salle'])
+            ->orderByRaw("CASE LOWER(jour) WHEN 'lundi' THEN 1 WHEN 'mardi' THEN 2 WHEN 'mercredi' THEN 3 WHEN 'jeudi' THEN 4 WHEN 'vendredi' THEN 5 WHEN 'samedi' THEN 6 ELSE 7 END")
+            ->orderBy('heure_debut')
+            ->get()
+            ->map(function ($e) {
+                return [
+                    'id'           => $e->id,
+                    'jour'         => $e->jour,
+                    'heures_debut' => $e->heure_debut,
+                    'heures_fin'   => $e->heure_fin,
+                    'module'       => [
+                        'nom'  => $e->module->nom ?? '',
+                        'code' => $e->module->code ?? '',
+                    ],
+                    'formateur'    => [
+                        'nom'    => $e->formateur->user->nom ?? '',
+                        'prenom' => $e->formateur->user->prenom ?? '',
+                    ],
+                    'salle'        => $e->salle->nom ?? '',
+                    'type_seance'  => 'presentiel',
+                ];
+            });
+
+        return $this->success($emplois);
+    }
+
+    public function exams(Request $request)
+    {
+        $user = $request->user();
+        $stagiaire = Stagiaire::where('user_id', $user->id)->with('group')->first();
+
+        if (!$stagiaire) {
+            return response()->json(['success' => false, 'message' => 'Stagiaire not found'], 404);
+        }
+
+        // Get all modules for this stagiaire's filiere
+        $modules = \App\Models\Module::where('filiere_id', $stagiaire->group->filiere_id)
+            ->where('is_active', true)
+            ->get();
+
+        $result = $modules->map(function ($module) use ($stagiaire) {
+            $notes = Note::where('stagiaire_id', $stagiaire->id)
+                ->whereHas('examen', fn($q) => $q->where('module_id', $module->id))
+                ->with('examen')
+                ->get();
+
+            if ($notes->isEmpty()) return null;
+
+            $average = round($notes->avg('note') ?? 0, 2);
+
+            $exams = $notes->map(fn($n) => [
+                'id'       => $n->examen->id,
+                'type'     => $n->examen->type,
+                'date'     => $n->examen->date_examen,
+                'coeff'    => $module->coefficient ?? 1,
+                'note_cc'  => in_array($n->examen->type, ['controle', 'rattrapage']) ? $n->note : null,
+                'note_efm' => in_array($n->examen->type, ['efm', 'eff']) ? $n->note : null,
+            ])->values();
+
+            return [
+                'id'      => $module->id,
+                'code'    => $module->code,
+                'nom'     => $module->nom,
+                'average' => $average,
+                'exams'   => $exams,
+            ];
+        })->filter()->values();
+
+        return $this->success([
+            'modules'         => $result,
+            'overall_average' => $this->calculateOverallAverage($stagiaire->id),
+        ]);
+    }
+
+    public function modules(Request $request)
+    {
+        $user = $request->user();
+        $stagiaire = Stagiaire::where('user_id', $user->id)->with('group')->first();
+
+        if (!$stagiaire) {
+            return response()->json(['success' => false, 'message' => 'Stagiaire not found'], 404);
+        }
+
+        // Modules belong to a filiere; groups also belong to a filiere — no direct group_module pivot
+        $modules = \App\Models\Module::where('filiere_id', $stagiaire->group->filiere_id)
+            ->where('is_active', true)
+            ->with(['formateurs.user'])
+            ->get()
+            ->map(function ($module) use ($stagiaire) {
+                $moduleNotes = Note::where('stagiaire_id', $stagiaire->id)
+                    ->whereHas('examen', fn($q) => $q->where('module_id', $module->id))
+                    ->get();
+
+                $module->average = $moduleNotes->count() > 0
+                    ? round($moduleNotes->avg('note'), 2)
+                    : 0;
+
+                return $module;
+            });
+
+        return $this->success($modules);
+    }
+
+    private function calculateOverallAverage($stagiaireId): float
+    {
+        $notes = Note::where('stagiaire_id', $stagiaireId)->get();
+        return $notes->count() > 0 ? round($notes->avg('note'), 2) : 0.0;
     }
 }

@@ -88,7 +88,7 @@ const SallesPage: React.FC = () => {
       label: 'Nom de la Salle',
       sortable: true,
       render: (item) => (
-        <span className="text-primary-600 font-medium cursor-pointer hover:text-primary-700">
+        <span className="text-primary-600 dark:text-primary-400 font-medium cursor-pointer hover:text-primary-700">
           {item.nom}
         </span>
       ),
@@ -100,12 +100,12 @@ const SallesPage: React.FC = () => {
       label: 'Disponibilité',
       sortable: true,
       render: (item) => item.is_active ? (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400">
           <span className="w-2 h-2 rounded-full bg-green-500"></span>
           Disponible
         </span>
       ) : (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400">
           <span className="w-2 h-2 rounded-full bg-red-500"></span>
           Occupée
         </span>
@@ -118,16 +118,16 @@ const SallesPage: React.FC = () => {
         <div className="relative">
           <button
             onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
-            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
           >
             <HiDotsHorizontal className="h-5 w-5" />
           </button>
           {openMenuId === item.id && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[140px]">
-              <button onClick={(e) => { e.stopPropagation(); openEdit(item); }} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10 min-w-[140px]">
+              <button onClick={(e) => { e.stopPropagation(); openEdit(item); }} className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2">
                 <HiPencil className="h-4 w-4" /> Modifier
               </button>
-              <button onClick={(e) => { e.stopPropagation(); setSelected(item); setDeleteOpen(true); setOpenMenuId(null); }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+              <button onClick={(e) => { e.stopPropagation(); setSelected(item); setDeleteOpen(true); setOpenMenuId(null); }} className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
                 <HiTrash className="h-4 w-4" /> Supprimer
               </button>
             </div>
@@ -142,11 +142,11 @@ const SallesPage: React.FC = () => {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Salles</h1>
-          <p className="text-sm text-gray-500">
-            <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Salles</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
             {' / '}
-            <span className="text-primary-600">Académique</span>
+            <span className="text-primary-600 dark:text-primary-400">Académique</span>
             {' / '}
             <span>Salles</span>
           </p>
@@ -175,11 +175,11 @@ const SallesPage: React.FC = () => {
         perPage={perPage}
         onPerPageChange={handlePerPageChange}
         headerContent={
-          <h3 className="text-lg font-semibold text-gray-900">Salles</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Salles</h3>
         }
         toolbarExtra={
           <button onClick={toggleSort}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <HiSortAscending className="h-4 w-4" /> Sort By {sortDir === 'asc' ? 'A-Z' : 'Z-A'}
           </button>
         }

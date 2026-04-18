@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { useRolePath } from '../../../hooks/useRolePath';
 import { HiPencil, HiEye, HiEyeOff, HiCheck } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import axiosInstance from '../../../utils/axios';
@@ -10,29 +9,21 @@ import { useAppDispatch } from '../../../app/hooks';
 import { setUser } from '../../auth/authSlice';
 import { storage } from '../../../utils/storage';
 
+interface FormateurProfile { specialisation: string; }
+
 const getAnneeScolaire = () => {
   const y = new Date().getFullYear();
   return new Date().getMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 };
 
-const roleLabel = (role?: string) => {
-  switch (role) {
-    case 'directeur': return 'Directeur';
-    case 'surveillant': return 'Surveillant Général';
-    case 'formateur': return 'Formateur';
-    case 'stagiaire': return 'Stagiaire';
-    default: return '—';
-  }
-};
-
-const ParametresPage: React.FC = () => {
+const FormateurParametresPage: React.FC = () => {
   const { isDark } = useTheme();
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  const basePath = useRolePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'account';
 
+  // ── Avatar ────────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(() => storage.getAvatar());
 
@@ -51,17 +42,16 @@ const ParametresPage: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const [specialite, setSpecialite] = useState('');
+  // ── Formateur extra info ──────────────────────────────────────────────────
+  const [formateurProfile, setFormateurProfile] = useState<FormateurProfile | null>(null);
   useEffect(() => {
-    if (user?.role !== 'formateur') return;
-    axiosInstance.get('/auth/formateur')
-      .then(r => setSpecialite((r.data.data ?? r.data)?.specialisation || ''))
-      .catch(() => {});
-  }, [user?.role]);
+    axiosInstance.get('/auth/formateur').then(r => setFormateurProfile(r.data.data ?? r.data)).catch(() => {});
+  }, []);
 
+  // ── Account form ──────────────────────────────────────────────────────────
   const [form, setForm] = useState({
     prenom: '', nom: '', telephone: '', address: '',
-    anneeScolaire: getAnneeScolaire(),
+    specialite: '', anneeScolaire: getAnneeScolaire(),
   });
   const [savingAccount, setSavingAccount] = useState(false);
   const [editingContact, setEditingContact] = useState(false);
@@ -70,7 +60,12 @@ const ParametresPage: React.FC = () => {
     const s = storage.getUser();
     if (!s) return;
     setForm(p => ({ ...p, prenom: s.prenom || '', nom: s.nom || '', telephone: s.telephone || '' }));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (formateurProfile?.specialisation)
+      setForm(p => ({ ...p, specialite: formateurProfile.specialisation }));
+  }, [formateurProfile]);
 
   const handleAccountSave = async () => {
     const cu = storage.getUser();
@@ -96,6 +91,7 @@ const ParametresPage: React.FC = () => {
     setEditingContact(false);
   };
 
+  // ── Password ──────────────────────────────────────────────────────────────
   const [pwd, setPwd] = useState({ current: '', newPwd: '', confirm: '' });
   const [showPwd, setShowPwd] = useState({ current: false, newPwd: false, confirm: false });
   const [savingPwd, setSavingPwd] = useState(false);
@@ -120,6 +116,7 @@ const ParametresPage: React.FC = () => {
     } finally { setSavingPwd(false); }
   };
 
+  // ── Notifications ─────────────────────────────────────────────────────────
   const [notifs, setNotifs] = useState({ email: true, examens: false, systeme: true });
   const [savingNotifs, setSavingNotifs] = useState(false);
   const handleNotifsSave = async () => {
@@ -131,10 +128,27 @@ const ParametresPage: React.FC = () => {
 
   const initials = `${user?.prenom?.[0] ?? ''}${user?.nom?.[0] ?? ''}`.toUpperCase();
 
+  // ── Figma design tokens ───────────────────────────────────────────────────
+  // Colors from Figma:
+  // #1A71F6  = primary blue (active tab text, buttons)
+  // #D9EDFF  = active tab bg (light blue)
+  // #737373  = inactive tab text
+  // #D1D1D1  = border (tab bar, inputs)
+  // #E7E7E7  = card border (lighter)
+  // #E7E7E7  = disabled input bg (same hex)
+  // #323130  = label text (Dark Grey)
+  // #454545  = body text
+  // #B0B0B0  = edit button border
+
+  // Card — dark: deep slate bg, subtle white border
   const card = `rounded-[24px] border p-6 ${
     isDark ? 'bg-gray-900 border-white/10' : 'bg-white border-[#E7E7E7]'
   }`;
+
+  // Input label
   const lbl = `block text-sm font-bold mb-1.5 ${isDark ? 'text-gray-400' : 'text-[#323130]'}`;
+
+  // Input — dark: dark bg, visible border, clear text
   const inp = (disabled?: boolean) =>
     `w-full border rounded-xl px-4 py-3 text-sm outline-none transition-colors ${
       disabled
@@ -145,10 +159,16 @@ const ParametresPage: React.FC = () => {
           ? 'bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
           : 'bg-white border-[#D1D1D1] text-[#454545] focus:border-[#1A71F6]'
     }`;
+
+  // Primary button
   const btnPrimary = `px-6 py-3 rounded-xl text-sm font-bold bg-[#1A71F6] hover:bg-blue-600 text-white transition-colors disabled:opacity-50`;
+
+  // Cancel button — text only
   const btnText = `px-4 py-3 text-sm font-bold transition-colors ${
     isDark ? 'text-blue-400 hover:text-blue-300' : 'text-[#1A71F6] hover:text-blue-700'
   }`;
+
+  // Section title
   const sectionTitle = `text-[22px] font-semibold leading-tight ${isDark ? 'text-white' : 'text-[#454545]'}`;
 
   const Req = ({ ok, text }: { ok: boolean; text: string }) => (
@@ -175,22 +195,24 @@ const ParametresPage: React.FC = () => {
     </button>
   );
 
-  const dashboardPath = `${basePath}/dashboard`;
-  const isFormateur = user?.role === 'formateur';
-
   return (
     <div className={`min-h-screen ${isDark ? 'bg-gray-950' : 'bg-gray-50'}`}>
+
+      {/* ── Breadcrumb ── */}
       <div className="mb-5">
-        <h1 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Paramètres généraux</h1>
+        <h1 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Paramètre généraux</h1>
         <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          <Link to={dashboardPath} className="text-[#1A71F6] hover:underline">Tableau de bord</Link>
+          <Link to="/formateur/dashboard" className="text-[#1A71F6] hover:underline">Tableau de bord</Link>
           {' / '}
           <span>Paramètres</span>
           {' / '}
-          <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>Paramètres généraux</span>
+          <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>Paramètre généraux</span>
         </p>
       </div>
 
+      {/* ── Tab Bar — standalone card, full width ── */}
+      {/* Figma: white bg, #D1D1D1 border, 14px radius, padding 8px 12px, gap 8px */}
+      {/* Each tab is flex-1 (equal thirds), active fills its section with #D9EDFF */}
       <div className={`flex items-center gap-2 px-3 py-2 rounded-[14px] border w-full mb-5 ${
         isDark ? 'bg-gray-800 border-gray-600' : 'bg-white border-[#D1D1D1]'
       }`}>
@@ -213,15 +235,24 @@ const ParametresPage: React.FC = () => {
         })}
       </div>
 
+      {/* ══════════════════ ACCOUNT TAB ══════════════════ */}
       {activeTab === 'account' && (
         <div className="flex flex-col gap-5">
+
+          {/* Profile Information Card */}
           <div className={card}>
             <p className={`${sectionTitle} mb-5`}>Profile Information</p>
 
+            {/* Avatar + Change Pictures */}
             <div className="flex items-center gap-3 mb-5">
+              {/* Avatar — 73x68 rectangle, 12px radius */}
               <div className="cursor-pointer flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
                 {avatarPreview ? (
-                  <img src={avatarPreview} alt="avatar" className="w-[68px] h-[68px] rounded-xl object-cover" />
+                  <img
+                    src={avatarPreview}
+                    alt="avatar"
+                    className="w-[68px] h-[68px] rounded-xl object-cover"
+                  />
                 ) : (
                   <div className={`w-[68px] h-[68px] rounded-xl flex items-center justify-center text-white font-bold text-lg select-none ${
                     isDark ? 'bg-[#1A71F6]/70' : 'bg-[#1A71F6]'
@@ -230,10 +261,14 @@ const ParametresPage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Change Pictures button — border #B0B0B0, radius 12px, padding 8px 8px 8px 12px */}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className={`flex items-center gap-1.5 pl-3 pr-2 py-2 rounded-xl text-xs font-bold border transition-colors ${
-                  isDark ? 'border-gray-500 text-gray-300 hover:bg-gray-700' : 'border-[#B0B0B0] text-[#454545] hover:bg-gray-50'
+                  isDark
+                    ? 'border-gray-500 text-gray-300 hover:bg-gray-700'
+                    : 'border-[#B0B0B0] text-[#454545] hover:bg-gray-50'
                 }`}
               >
                 Change Pictures
@@ -242,6 +277,7 @@ const ParametresPage: React.FC = () => {
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             </div>
 
+            {/* Row 1: First Name | Last Name | Année scolaire */}
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <label className={lbl}>First Name</label>
@@ -257,28 +293,23 @@ const ParametresPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Row 2: Garde | Spécialité | Nom de l'établissement */}
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div>
-                <label className={lbl}>Rôle</label>
-                <input value={roleLabel(user?.role)} readOnly className={inp(true)} />
+                <label className={lbl}>Garde</label>
+                <input value="Formateur" readOnly className={inp(true)} />
               </div>
-              {isFormateur ? (
-                <div>
-                  <label className={lbl}>Spécialité</label>
-                  <input value={specialite} readOnly className={inp(true)} />
-                </div>
-              ) : (
-                <div>
-                  <label className={lbl}>Identifiant</label>
-                  <input value={user?.email?.split('@')[0] || '—'} readOnly className={inp(true)} />
-                </div>
-              )}
+              <div>
+                <label className={lbl}>Spécialité</label>
+                <input value={form.specialite} readOnly className={inp(true)} />
+              </div>
               <div>
                 <label className={lbl}>Nom de l'établissement</label>
                 <input value="ISTA - Institut Spécialisé de Technologie Appliquée" readOnly className={inp(true)} />
               </div>
             </div>
 
+            {/* CTA row — gap 16px, Update (primary) + Cancel (text/blue) */}
             <div className="flex items-center gap-4">
               <button onClick={handleAccountSave} disabled={savingAccount} className={btnPrimary}>
                 {savingAccount ? 'Updating...' : 'Update'}
@@ -287,13 +318,18 @@ const ParametresPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Contact Detail Card */}
           <div className={card}>
+            {/* Header row: title (space-between) edit button */}
             <div className="flex items-center justify-between mb-5">
               <p className={sectionTitle}>Contact Detail</p>
+              {/* Edit button — border #B0B0B0, radius 12px, padding 8px 8px 8px 12px */}
               <button
                 onClick={() => setEditingContact(v => !v)}
                 className={`flex items-center gap-1.5 pl-3 pr-2 py-2 rounded-xl text-xs font-bold border transition-colors ${
-                  isDark ? 'border-gray-500 text-gray-300 hover:bg-gray-700' : 'border-[#B0B0B0] text-[#454545] hover:bg-gray-50'
+                  isDark
+                    ? 'border-gray-500 text-gray-300 hover:bg-gray-700'
+                    : 'border-[#B0B0B0] text-[#454545] hover:bg-gray-50'
                 }`}
               >
                 {editingContact ? 'Done' : 'Edit'}
@@ -301,6 +337,7 @@ const ParametresPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Contact fields — Phone | Email | Address */}
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className={lbl}>Phone Number</label>
@@ -328,10 +365,12 @@ const ParametresPage: React.FC = () => {
         </div>
       )}
 
+      {/* ══════════════════ SECURITY TAB ══════════════════ */}
       {activeTab === 'security' && (
         <div className={card}>
           <p className={`${sectionTitle} mb-5`}>Password</p>
 
+          {/* 3 password fields */}
           <div className="grid grid-cols-3 gap-4 mb-5">
             {(['current', 'newPwd', 'confirm'] as const).map(k => {
               const labels = { current: 'Old Password', newPwd: 'New Password', confirm: 'Confirm Password' };
@@ -355,6 +394,7 @@ const ParametresPage: React.FC = () => {
             })}
           </div>
 
+          {/* Requirements checklist */}
           <div className="flex flex-col gap-2 mb-6">
             <Req ok={pwdMinLength} text="Minimum 8 characters" />
             <Req ok={pwdMixed}     text="Use a combination of uppercase and lowercase letters" />
@@ -372,6 +412,7 @@ const ParametresPage: React.FC = () => {
         </div>
       )}
 
+      {/* ══════════════════ NOTIFICATION TAB ══════════════════ */}
       {activeTab === 'notification' && (
         <div className={card}>
           <p className={`${sectionTitle} mb-5`}>Notification</p>
@@ -399,8 +440,9 @@ const ParametresPage: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };
 
-export default ParametresPage;
+export default FormateurParametresPage;

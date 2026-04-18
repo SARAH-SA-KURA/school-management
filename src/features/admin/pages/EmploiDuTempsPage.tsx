@@ -212,11 +212,11 @@ const EmploiDuTempsPage: React.FC = () => {
       {/* Page Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Emploi du temps</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            <Link to={`${basePath}/dashboard`} className="text-primary-600 hover:text-primary-700">Tableau de bord</Link>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Emploi du temps</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
             {' / '}
-            <span className="text-primary-600">Académique</span>
+            <span className="text-primary-600 dark:text-primary-400">Académique</span>
             {' / '}
             <span>Emploi du temps</span>
           </p>
@@ -224,15 +224,15 @@ const EmploiDuTempsPage: React.FC = () => {
       </div>
 
       {/* Main Card */}
-      <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
         {/* Title & Filter Chips */}
         <div className="flex items-center gap-3 px-6 py-4 flex-wrap">
-          <h2 className="text-base font-semibold text-gray-900 mr-1">Time Table</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mr-1">Time Table</h2>
 
           <select
             value={formateur}
             onChange={(e) => { setFormateur(e.target.value); setFiliere(''); setGroupe(''); }}
-            className="text-sm border border-primary-200 text-primary-600 rounded-full px-4 py-1.5 bg-white appearance-none cursor-pointer hover:bg-primary-50 transition-colors pr-8"
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
           >
             <option value="">Formateur : --Choisir formateur</option>
@@ -244,7 +244,7 @@ const EmploiDuTempsPage: React.FC = () => {
           <select
             value={filiere}
             onChange={(e) => { setFiliere(e.target.value); setGroupe(''); }}
-            className="text-sm border border-primary-200 text-primary-600 rounded-full px-4 py-1.5 bg-white appearance-none cursor-pointer hover:bg-primary-50 transition-colors pr-8"
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
           >
             <option value="">Filière : --choisir filière</option>
@@ -256,7 +256,7 @@ const EmploiDuTempsPage: React.FC = () => {
           <select
             value={groupe}
             onChange={(e) => setGroupe(e.target.value)}
-            className="text-sm border border-primary-200 text-primary-600 rounded-full px-4 py-1.5 bg-white appearance-none cursor-pointer hover:bg-primary-50 transition-colors pr-8"
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
           >
             <option value="">Groupe : --choisir groupe</option>
@@ -268,7 +268,7 @@ const EmploiDuTempsPage: React.FC = () => {
           <select
             value={semaine}
             onChange={(e) => setSemaine(e.target.value)}
-            className="text-sm border border-primary-200 text-primary-600 rounded-full px-4 py-1.5 bg-white appearance-none cursor-pointer hover:bg-primary-50 transition-colors pr-8"
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
           >
             {WEEKS.map(w => (
@@ -284,7 +284,7 @@ const EmploiDuTempsPage: React.FC = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
           ) : !allFiltersSelected ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
               <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
@@ -294,19 +294,19 @@ const EmploiDuTempsPage: React.FC = () => {
           ) : (
             <table className="w-full border-collapse">
               <thead>
-                <tr className="bg-gray-50/80">
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 w-20 border-b border-gray-100">Horaire</th>
+                <tr className="bg-gray-50/80 dark:bg-gray-800/60">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400 w-20 border-b border-gray-100 dark:border-gray-700">Horaire</th>
                   {days.map(day => (
-                    <th key={day} className="px-3 py-3 text-center text-sm font-medium text-gray-500 border-b border-gray-100">{day}</th>
+                    <th key={day} className="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">{day}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {timeSlots.map((slot, slotIdx) => (
-                  <tr key={slotIdx} className="border-b border-gray-50">
+                  <tr key={slotIdx} className="border-b border-gray-50 dark:border-gray-700">
                     <td className="px-4 py-3 align-top w-20">
-                      <div className="text-sm font-semibold text-gray-800">{slot.start}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{slot.end}</div>
+                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{slot.start}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{slot.end}</div>
                     </td>
                     {days.map(day => {
                       const cellEntries = getSlotEntries(day, slotIdx);
@@ -321,24 +321,24 @@ const EmploiDuTempsPage: React.FC = () => {
                                     <div className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-full ${colors.border}`} />
                                     <div className="py-2 pr-1">
                                       <div className="flex items-start gap-1.5 mb-2">
-                                        <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                         </svg>
-                                        <span className="font-bold text-sm text-gray-900 leading-tight">{entry.module}</span>
+                                        <span className="font-bold text-sm text-gray-900 dark:text-gray-100 leading-tight">{entry.module}</span>
                                       </div>
                                       {entry.salle && (
                                         <div className="flex items-center gap-1.5 mb-1">
-                                          <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                                           </svg>
-                                          <span className="text-xs text-gray-500">{entry.salle}</span>
+                                          <span className="text-xs text-gray-500 dark:text-gray-400">{entry.salle}</span>
                                         </div>
                                       )}
                                       <div className="flex items-center gap-1.5 mb-2">
-                                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                         </svg>
-                                        <span className="text-xs text-gray-500">{entry.formateur}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">{entry.formateur}</span>
                                       </div>
                                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white ${
                                         entry.type === 'a_distance' ? 'bg-yellow-700' : colors.badge
@@ -350,7 +350,7 @@ const EmploiDuTempsPage: React.FC = () => {
                                 );
                               })}
                               {cellEntries.length > 2 && (
-                                <div className="text-[10px] text-gray-400 text-center font-medium">
+                                <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-medium">
                                   +{cellEntries.length - 2} autres
                                 </div>
                               )}
@@ -368,9 +368,9 @@ const EmploiDuTempsPage: React.FC = () => {
 
         {/* Break Info */}
         <div className="grid grid-cols-2 gap-4 px-6 py-4">
-          <div className="border border-gray-100 rounded-lg p-4">
+          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
             <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Morning Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" strokeWidth={2} />
                 <path strokeWidth={2} d="M12 6v6l4 2" />
@@ -378,9 +378,9 @@ const EmploiDuTempsPage: React.FC = () => {
               10:50 to 11 :10 AM
             </div>
           </div>
-          <div className="border border-gray-100 rounded-lg p-4">
+          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
             <span className="inline-block px-2.5 py-0.5 bg-red-500 text-white rounded text-xs font-medium mb-2">Evening Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" strokeWidth={2} />
                 <path strokeWidth={2} d="M12 6v6l4 2" />
