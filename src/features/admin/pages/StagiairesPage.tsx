@@ -227,6 +227,7 @@ const StagiairesPage: React.FC = () => {
 
   const toggleSort = () => {
     setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    setPage(1);
   };
 
   const openProfile = async (id: number) => {

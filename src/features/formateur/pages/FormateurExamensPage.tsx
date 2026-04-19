@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTheme } from '../../../contexts/ThemeContext';
 import axiosInstance from '../../../utils/axios';
 import toast from 'react-hot-toast';
-import { HiDownload, HiUpload, HiFilter, HiChevronDown } from 'react-icons/hi';
+import { HiDownload, HiUpload, HiChevronDown } from 'react-icons/hi';
 
 interface Module {
   id: number;
@@ -362,9 +362,6 @@ const FormateurExamensPage: React.FC = () => {
         <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
           <h2 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Examens & notes</h2>
           <div className="flex items-center gap-2">
-            <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-              <HiFilter className="h-4 w-4" /> Filter
-            </button>
             <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
               Sort By A-Z <HiChevronDown className="h-4 w-4" />
             </button>

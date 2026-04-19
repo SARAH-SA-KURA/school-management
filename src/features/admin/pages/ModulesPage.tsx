@@ -24,7 +24,7 @@ const ModulesPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await modulesApi.getAll({ page, search: debouncedSearch, per_page: perPage, sort_dir: sortDir });
+      const res = await modulesApi.getAll({ page, search: debouncedSearch, per_page: perPage, sort_by: 'nom', sort_dir: sortDir });
       setData(res.data.data);
       setTotalPages(res.data.meta.last_page);
       setTotalItems(res.data.meta.total);
@@ -39,7 +39,7 @@ const ModulesPage: React.FC = () => {
     setPage(1);
   };
 
-  const toggleSort = () => setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+  const toggleSort = () => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setPage(1); };
 
   const columns: TableColumn<Module>[] = [
     { key: 'code', label: 'Code', sortable: true },

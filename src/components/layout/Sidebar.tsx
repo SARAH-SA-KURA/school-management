@@ -50,8 +50,8 @@ const Sidebar: React.FC = () => {
           {
             title: 'Personnes',
             items: [
-              { label: 'Stagiaires', path: '/admin/stagiaires', icon: <HiUsers className="h-5 w-5" />, hasSubmenu: true },
-              { label: 'Formateurs', path: '/admin/formateurs', icon: <HiAcademicCap className="h-5 w-5" />, hasSubmenu: true },
+              { label: 'Stagiaires', path: '/admin/stagiaires', icon: <HiUsers className="h-5 w-5" /> },
+              { label: 'Formateurs', path: '/admin/formateurs', icon: <HiAcademicCap className="h-5 w-5" /> },
             ],
           },
           {
@@ -68,7 +68,7 @@ const Sidebar: React.FC = () => {
           {
             title: 'Gestion',
             items: [
-              { label: 'Absences', path: '/admin/absences', icon: <HiClock className="h-5 w-5" />, hasSubmenu: true },
+              { label: 'Absences', path: '/admin/absences', icon: <HiClock className="h-5 w-5" /> },
             ],
           },
           {
@@ -104,7 +104,7 @@ const Sidebar: React.FC = () => {
           {
             title: 'Paramètres',
             items: [
-              { label: 'Paramètres', path: '/formateur/parametres', icon: <HiCog className="h-5 w-5" /> },
+              { label: 'Paramètres généraux', path: '/formateur/parametres', icon: <HiCog className="h-5 w-5" /> },
             ],
           },
         ];
@@ -143,8 +143,8 @@ const Sidebar: React.FC = () => {
           {
             title: 'Personnes',
             items: [
-              { label: 'Stagiaires', path: '/surveillant/stagiaires', icon: <HiUsers className="h-5 w-5" />, hasSubmenu: true },
-              { label: 'Formateurs', path: '/surveillant/formateurs', icon: <HiAcademicCap className="h-5 w-5" />, hasSubmenu: true },
+              { label: 'Stagiaires', path: '/surveillant/stagiaires', icon: <HiUsers className="h-5 w-5" /> },
+              { label: 'Formateurs', path: '/surveillant/formateurs', icon: <HiAcademicCap className="h-5 w-5" /> },
             ],
           },
           {
@@ -161,7 +161,7 @@ const Sidebar: React.FC = () => {
           {
             title: 'Gestion',
             items: [
-              { label: 'Absences', path: '/surveillant/absences', icon: <HiClock className="h-5 w-5" />, hasSubmenu: true },
+              { label: 'Absences', path: '/surveillant/absences', icon: <HiClock className="h-5 w-5" /> },
             ],
           },
           {

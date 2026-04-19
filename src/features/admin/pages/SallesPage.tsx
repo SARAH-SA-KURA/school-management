@@ -36,7 +36,7 @@ const SallesPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await sallesApi.getAll({ page, search: debouncedSearch, per_page: perPage, sort_dir: sortDir });
+      const res = await sallesApi.getAll({ page, search: debouncedSearch, per_page: perPage, sort_by: 'nom', sort_dir: sortDir });
       setData(res.data.data);
       setTotalPages(res.data.meta.last_page);
       setTotalItems(res.data.meta.total);
@@ -58,7 +58,7 @@ const SallesPage: React.FC = () => {
     setPage(1);
   };
 
-  const toggleSort = () => setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+  const toggleSort = () => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setPage(1); };
 
   const openCreate = () => { setSelected(null); setForm({ nom: '', type: 'cours', capacite: 30, disponibilite: 'disponible' }); setModalOpen(true); };
   const openEdit = (item: Salle) => { setSelected(item); setForm({ nom: item.nom, type: item.type, capacite: item.capacite, disponibilite: item.is_active ? 'disponible' : 'occupee' }); setModalOpen(true); setOpenMenuId(null); };

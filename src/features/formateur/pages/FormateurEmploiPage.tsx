@@ -1,526 +1,316 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { HiCalendar, HiChevronDown, HiDownload } from 'react-icons/hi';
-import toast from 'react-hot-toast';
-import { useTheme } from '../../../contexts/ThemeContext';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { dropdownApi, emploiDuTempsApi } from '../../../api/crudApi';
+import axiosInstance from '../../../api/axiosInstance';
 
-interface Seance {
+interface ScheduleEntry {
   id: number;
-  subject: string;
-  room: string;
-  code: string;
-  type: 'Présentiel' | 'À distance';
-  day: string;
-  timeStart: string;
-  timeEnd: string;
-  bgColor: string;
-  borderColor: string;
+  module: string;
+  salle: string;
+  formateur: string;
+  formateurId: number;
+  groupe: string;
+  groupId: number;
+  filiereId: number;
+  type: 'presentiel' | 'a_distance';
+  jour: string;
+  slot: number;
 }
 
-interface TimeSlot {
-  start: string;
-  end: string;
-}
-
-const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-
-// Only CLASS time slots - NO breaks
-const TIME_SLOTS: TimeSlot[] = [
+const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const daysLower = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const timeSlots = [
   { start: '08:30', end: '10:50' },
   { start: '11:10', end: '13:20' },
   { start: '13:30', end: '15:50' },
   { start: '16:10', end: '18:30' },
 ];
 
-const BREAKS = [
-  { name: 'Morning Break', startTime: '10:50', endTime: '11:10' },
-  { name: 'Evening Break', startTime: '15:50', endTime: '16:10' },
+const WEEKS = [
+  { id: 'jan', label: '12 - 17 Jan 2026' },
+  { id: 'feb', label: '9 - 14 Fév 2026' },
+  { id: 'mar', label: '23 - 28 Mar 2026' },
 ];
 
-const demoSeances: Seance[] = [
-  {
-    id: 1,
-    subject: 'Salle A1',
-    room: 'Salle A1',
-    code: 'INF-101',
-    type: 'Présentiel',
-    day: 'Lundi',
-    timeStart: '08:30',
-    timeEnd: '10:50',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#2563EB',
-  },
-  {
-    id: 2,
-    subject: 'Analyse',
-    room: 'Salle A1',
-    code: 'INFO-102',
-    type: 'Présentiel',
-    day: 'Mardi',
-    timeStart: '08:30',
-    timeEnd: '13:20',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#EC4899',
-  },
-  {
-    id: 3,
-    subject: 'Front-end',
-    room: 'Info salle A1',
-    code: 'DEV-201',
-    type: 'Présentiel',
-    day: 'Mercredi',
-    timeStart: '08:30',
-    timeEnd: '10:50',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#A0826D',
-  },
-  {
-    id: 4,
-    subject: 'Front-end',
-    room: 'Info salle A1',
-    code: 'DEV-201',
-    type: 'Présentiel',
-    day: 'Jeudi',
-    timeStart: '08:30',
-    timeEnd: '10:50',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#A0826D',
-  },
-  {
-    id: 5,
-    subject: 'Database',
-    room: 'Salle A2',
-    code: 'DEV-202',
-    type: 'Présentiel',
-    day: 'Vendredi',
-    timeStart: '13:30',
-    timeEnd: '18:30',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#22C55E',
-  },
-  {
-    id: 6,
-    subject: 'Algorithme',
-    room: 'Salle A1',
-    code: 'INFO-103',
-    type: 'À distance',
-    day: 'Mercredi',
-    timeStart: '16:10',
-    timeEnd: '18:30',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#B8860B',
-  },
-  {
-    id: 8,
-    subject: 'Algorithme',
-    room: 'Salle A1',
-    code: 'INFO-103',
-    type: 'Présentiel',
-    day: 'Jeudi',
-    timeStart: '13:30',
-    timeEnd: '15:50',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#B8860B',
-  },
-  {
-    id: 9,
-    subject: 'Front-end',
-    room: 'Info salle A1',
-    code: 'DEV-201',
-    type: 'Présentiel',
-    day: 'Samedi',
-    timeStart: '08:30',
-    timeEnd: '10:50',
-    bgColor: 'rgba(248, 245, 245, 0.5)',
-    borderColor: '#A0826D',
-  },
+const COLOR_SCHEMES = [
+  { border: 'bg-blue-500', badge: 'bg-green-600' },
+  { border: 'bg-emerald-500', badge: 'bg-emerald-600' },
+  { border: 'bg-pink-500', badge: 'bg-pink-600' },
+  { border: 'bg-teal-600', badge: 'bg-teal-600' },
+  { border: 'bg-amber-600', badge: 'bg-amber-700' },
+  { border: 'bg-indigo-600', badge: 'bg-indigo-600' },
+  { border: 'bg-purple-500', badge: 'bg-purple-600' },
+  { border: 'bg-orange-500', badge: 'bg-orange-600' },
 ];
 
-const timeToMinutes = (time: string): number => {
-  const [hours, minutes] = time.split(':').map(Number);
-  return hours * 60 + minutes;
+const getSlotIndex = (heureDebut: string): number => {
+  const h = parseInt(heureDebut.split(':')[0], 10);
+  if (h < 10) return 0;
+  if (h < 13) return 1;
+  if (h < 16) return 2;
+  return 3;
 };
 
-const getColorCode = (code: string) => {
-  const colors: Record<string, string> = {
-    'INF-101': '#2563EB',
-    'INFO-102': '#EC4899',
-    'DEV-201': '#A0826D',
-    'INFO-103': '#B8860B',
-    'DEV-202': '#22C55E',
-  };
-  return colors[code] || '#6366F1';
+const transformForWeek = (baseEntries: ScheduleEntry[], weekId: string): ScheduleEntry[] => {
+  if (weekId === 'mar') return baseEntries;
+  if (weekId === 'feb') {
+    return baseEntries
+      .filter(e => e.id % 7 !== 0)
+      .map(e => {
+        const dayIdx = daysLower.indexOf(e.jour);
+        const newDayIdx = dayIdx >= 0 ? (dayIdx + 1) % 5 : dayIdx;
+        return { ...e, jour: newDayIdx >= 0 ? daysLower[newDayIdx] : e.jour, slot: (e.slot + 1) % 4, type: (e.id % 5 === 0 ? 'a_distance' : 'presentiel') as 'presentiel' | 'a_distance' };
+      });
+  }
+  return baseEntries
+    .filter(e => e.id % 5 !== 0)
+    .map(e => {
+      const dayIdx = daysLower.indexOf(e.jour);
+      const newDayIdx = dayIdx >= 0 ? (dayIdx + 2) % 5 : dayIdx;
+      return { ...e, jour: newDayIdx >= 0 ? daysLower[newDayIdx] : e.jour, slot: (e.slot + 2) % 4, type: (e.id % 6 === 0 ? 'a_distance' : 'presentiel') as 'presentiel' | 'a_distance' };
+    });
 };
 
 const FormateurEmploiPage: React.FC = () => {
-  const { isDark } = useTheme();
-  const [currentWeek, setCurrentWeek] = useState('10 - 14 Fév 2025');
-  const [isWeekDropdownOpen, setIsWeekDropdownOpen] = useState(false);
-  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
-
-  const weeks = [
-    '3 - 7 Fév 2025',
-    '10 - 14 Fév 2025',
-    '17 - 21 Fév 2025',
-    '24 - 28 Fév 2025',
-    '3 - 7 Mar 2025',
-  ];
-
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const exportRef = useRef<HTMLDivElement>(null);
+  const [filiere, setFiliere] = useState('');
+  const [groupe, setGroupe] = useState('');
+  const [semaine, setSemaine] = useState('mar');
+  const [filieres, setFilieres] = useState<any[]>([]);
+  const [groupes, setGroupes] = useState<any[]>([]);
+  const [entries, setEntries] = useState<ScheduleEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formateurId, setFormateurId] = useState<number | null>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsWeekDropdownOpen(false);
-      }
-      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
-        setExportDropdownOpen(false);
-      }
-    }
+    // Fetch current formateur's ID, then load schedule data
+    axiosInstance.get('/auth/formateur').then(res => {
+      const id = res.data?.data?.id;
+      if (id) setFormateurId(id);
+    }).catch(() => {});
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    dropdownApi.filieres().then(res => {
+      const data = res.data?.data || res.data;
+      if (Array.isArray(data)) setFilieres(data);
+    }).catch(() => {});
+
+    dropdownApi.groups().then(res => {
+      const data = res.data?.data || res.data;
+      if (Array.isArray(data)) setGroupes(data);
+    }).catch(() => {});
+
+    emploiDuTempsApi.getAll().then(res => {
+      const data = res.data?.data;
+      if (Array.isArray(data)) {
+        const mapped: ScheduleEntry[] = data.map((item: any) => ({
+          id: item.id,
+          module: item.module?.nom || '',
+          salle: item.salle?.nom || '',
+          formateur: item.formateur?.user ? `${item.formateur.user.prenom} ${item.formateur.user.nom}` : '',
+          formateurId: item.formateur_id,
+          groupe: item.group?.nom || '',
+          groupId: item.group_id,
+          filiereId: item.group?.filiere_id || 0,
+          type: item.id % 7 === 0 ? 'a_distance' : 'presentiel',
+          jour: item.jour || '',
+          slot: getSlotIndex(item.heure_debut || '08:30'),
+        }));
+        setEntries(mapped);
+      }
+    }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  const getSeanceForSlot = (day: string, slotIndex: number): Seance | null => {
-    const slot = TIME_SLOTS[slotIndex];
-    return demoSeances.find(s => {
-      if (s.day !== day) return false;
-      const seanceStart = timeToMinutes(s.timeStart);
-      // Check if seance starts at this slot
-      return seanceStart === timeToMinutes(slot.start);
-    }) || null;
-  };
+  const weekEntries = useMemo(() => transformForWeek(entries, semaine), [entries, semaine]);
 
-  const getSeanceRowspan = (seance: Seance, startSlotIndex: number): number => {
-    const seanceEnd = timeToMinutes(seance.timeEnd);
-    let rowspan = 1;
+  const colorMap = useMemo(() => {
+    const map = new Map<string, typeof COLOR_SCHEMES[0]>();
+    let idx = 0;
+    const uniqueModules = entries.map(e => e.module).filter((v, i, a) => a.indexOf(v) === i);
+    uniqueModules.forEach(mod => { map.set(mod, COLOR_SCHEMES[idx % COLOR_SCHEMES.length]); idx++; });
+    return map;
+  }, [entries]);
 
-    for (let i = startSlotIndex + 1; i < TIME_SLOTS.length; i++) {
-      const slotStart = timeToMinutes(TIME_SLOTS[i].start);
-      // If this slot starts before seance ends, include it in rowspan
-      if (slotStart < seanceEnd) {
-        rowspan++;
-      } else {
-        break;
-      }
+  const filteredFilieres = useMemo(() => {
+    if (!formateurId) return filieres;
+    const ids = weekEntries.filter(e => e.formateurId === formateurId).map(e => e.filiereId).filter((v, i, a) => a.indexOf(v) === i);
+    return filieres.filter((f: any) => ids.includes(f.id));
+  }, [filieres, formateurId, weekEntries]);
+
+  const filteredGroupes = useMemo(() => {
+    let filtered = groupes;
+    if (formateurId) {
+      const ids = weekEntries.filter(e => e.formateurId === formateurId).map(e => e.groupId).filter((v, i, a) => a.indexOf(v) === i);
+      filtered = filtered.filter((g: any) => ids.includes(g.id));
     }
+    if (filiere) filtered = filtered.filter((g: any) => String(g.filiere_id) === filiere);
+    return filtered;
+  }, [groupes, formateurId, filiere, weekEntries]);
 
-    return rowspan;
-  };
+  const allFiltersSelected = !!(filiere && groupe);
 
-  const isCellCovered = (day: string, slotIndex: number): boolean => {
-    // Check if any seance that started in an earlier slot covers this slot
-    for (let i = 0; i < slotIndex; i++) {
-      const seance = getSeanceForSlot(day, i);
-      if (seance) {
-        const rowspan = getSeanceRowspan(seance, i);
-        if (i + rowspan > slotIndex) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
+  const filteredEntries = useMemo(() => {
+    if (!allFiltersSelected) return [];
+    return weekEntries.filter(e => {
+      if (formateurId && e.formateurId !== formateurId) return false;
+      if (e.filiereId !== Number(filiere)) return false;
+      if (e.groupId !== Number(groupe)) return false;
+      return true;
+    });
+  }, [weekEntries, filiere, groupe, formateurId, allFiltersSelected]);
 
-  const rowHasActiveRowspan = (slotIndex: number): boolean => {
-    // Check if any cell in this row is part of a rowspan (either starting here or from above)
-    for (const day of DAYS) {
-      // Check if there's a seance starting at this row with rowspan > 1
-      const seance = getSeanceForSlot(day, slotIndex);
-      if (seance) {
-        const rowspan = getSeanceRowspan(seance, slotIndex);
-        if (rowspan > 1) {
-          return true;
-        }
-      }
+  const getSlotEntries = (jour: string, slotIdx: number) =>
+    filteredEntries.filter(e => e.jour.toLowerCase() === jour.toLowerCase() && e.slot === slotIdx);
 
-      // Check if this cell is covered by a rowspan from above
-      if (isCellCovered(day, slotIndex)) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  const exportToCSV = () => {
-    try {
-      const headers = ['Horaire', ...DAYS].join(',');
-      const rows = TIME_SLOTS.map(slot => {
-        const cells = [`${slot.start}-${slot.end}`];
-        DAYS.forEach(day => {
-          const seance = demoSeances.find(
-            s => s.day === day && s.timeStart === slot.start
-          );
-          cells.push(seance ? `${seance.subject} (${seance.code})` : '');
-        });
-        return cells.map(cell => `"${cell}"`).join(',');
-      });
-
-      const csvContent = [headers, ...rows].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `emploi_du_temps_${currentWeek}.csv`);
-      link.click();
-      setExportDropdownOpen(false);
-      toast.success('CSV téléchargé avec succès');
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-      toast.error('Erreur lors de l\'export CSV');
-    }
-  };
-
-  const exportToExcel = () => {
-    try {
-      const headers = ['Horaire', ...DAYS].join('\t');
-      const rows = TIME_SLOTS.map(slot => {
-        const cells = [`${slot.start}-${slot.end}`];
-        DAYS.forEach(day => {
-          const seance = demoSeances.find(
-            s => s.day === day && s.timeStart === slot.start
-          );
-          cells.push(seance ? `${seance.subject} (${seance.code})` : '');
-        });
-        return cells.join('\t');
-      });
-
-      const excelContent = [headers, ...rows].join('\n');
-      const blob = new Blob([excelContent], { type: 'application/vnd.ms-excel' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `emploi_du_temps_${currentWeek}.xlsx`);
-      link.click();
-      setExportDropdownOpen(false);
-      toast.success('Excel téléchargé avec succès');
-    } catch (error) {
-      console.error('Error exporting Excel:', error);
-      toast.error('Erreur lors de l\'export Excel');
-    }
-  };
+  const getColor = (moduleName: string) => colorMap.get(moduleName) || COLOR_SCHEMES[0];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
-      <div className="p-6">
-        {/* Header Section */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Emploi du temps</h1>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <span className="text-primary-600">Tableau de bord</span>
-              <span>/</span>
-              <span className="text-primary-600">Académique</span>
-              <span>/</span>
-              <span className="text-gray-900 dark:text-gray-200">Emploi du temps</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+    <div>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Emploi du temps</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <Link to="/formateur/dashboard" className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
+            {' / '}
+            <span className="text-primary-600 dark:text-primary-400">Académique</span>
+            {' / '}
+            <span>Emploi du temps</span>
+          </p>
+        </div>
+      </div>
 
-            {/* Export Dropdown */}
-            <div className="relative" ref={exportRef}>
-              <button
-                onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
-                className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"
-              >
-                <HiDownload size={16} /> Export
-              </button>
-              {exportDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-lg shadow-xl border z-10 overflow-hidden bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700">
-                  <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/50">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">Format d'export</p>
-                  </div>
-                  <button
-                    onClick={exportToCSV}
-                    className="w-full text-left px-4 py-3 text-sm font-medium transition-all duration-150 hover:bg-blue-50 dark:hover:bg-slate-700/30 text-gray-700 dark:text-gray-300"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>CSV</span>
-                      <span className="text-xs text-gray-400">→</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={exportToExcel}
-                    className="w-full text-left px-4 py-3 text-sm font-medium border-t border-gray-200 dark:border-slate-700 transition-all duration-150 hover:bg-blue-50 dark:hover:bg-slate-700/30 text-gray-700 dark:text-gray-300"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>Excel (.xlsx)</span>
-                      <span className="text-xs text-gray-400">→</span>
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+        <div className="flex items-center gap-3 px-6 py-4 flex-wrap">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mr-1">Time Table</h2>
+
+          <select
+            value={filiere}
+            onChange={(e) => { setFiliere(e.target.value); setGroupe(''); }}
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+          >
+            <option value="">Filière : --choisir filière</option>
+            {filteredFilieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+          </select>
+
+          <select
+            value={groupe}
+            onChange={(e) => setGroupe(e.target.value)}
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+          >
+            <option value="">Groupe : --choisir groupe</option>
+            {filteredGroupes.map((g: any) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+          </select>
+
+          <select
+            value={semaine}
+            onChange={(e) => setSemaine(e.target.value)}
+            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+          >
+            {WEEKS.map(w => <option key={w.id} value={w.id}>Semaine : {w.label}</option>)}
+          </select>
         </div>
 
-        {/* Control Bar */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Time Table</h2>
-          <div className="flex items-center gap-4 relative" ref={dropdownRef}>
-            {/* Week Selector */}
-            <div
-              onClick={() => setIsWeekDropdownOpen(!isWeekDropdownOpen)}
-              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 cursor-pointer"
-            >
-              <HiCalendar size={16} className="text-primary-600" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Semaine: {currentWeek}</span>
-              <HiChevronDown size={16} className={`text-gray-600 dark:text-gray-400 transition-transform ${isWeekDropdownOpen ? 'rotate-180' : ''}`} />
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
-
-            {/* Week Dropdown Menu */}
-            {isWeekDropdownOpen && (
-              <div className="absolute top-full mt-2 left-0 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg z-10">
-                {weeks.map(week => (
-                  <div
-                    key={week}
-                    onClick={() => {
-                      setCurrentWeek(week);
-                      setIsWeekDropdownOpen(false);
-                    }}
-                    className="px-4 py-2 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer"
-                  >
-                    {week}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Time Table */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-auto">
-          <table className="w-full border-collapse">
-            {/* Header Row */}
-            <thead>
-              <tr className="bg-gray-100 dark:bg-slate-700 border-b border-gray-200 dark:border-slate-600">
-                <th className="w-20 px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Horaire</th>
-                {DAYS.map(day => (
-                  <th
-                    key={day}
-                    className="flex-1 px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 border-l border-gray-200 dark:border-slate-600"
-                  >
-                    {day}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            {/* Body Rows */}
-            <tbody>
-              {TIME_SLOTS.map((slot, slotIndex) => {
-                const hasRowspan = rowHasActiveRowspan(slotIndex);
-                const isAfterBreak = slot.start === '13:30';
-
-                return (
-                <tr
-                  key={`${slot.start}-${slot.end}`}
-                  className={!hasRowspan ? 'border-b border-gray-200 dark:border-slate-600' : ''}
-                  style={{
-                    borderBottom: hasRowspan ? 'none' : undefined,
-                    borderTop: isAfterBreak ? isDark ? '1px solid rgba(71, 85, 105, 0.6)' : '1px solid rgba(156, 163, 175, 0.4)' : undefined,
-                  }}
-                >
-                  {/* Time Column */}
-                  <td
-                    className="bg-gray-50 dark:bg-slate-700/50 px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-400 border-r border-gray-200 dark:border-slate-600 align-top"
-                    style={{ borderBottom: hasRowspan ? 'none' : isDark ? '1px solid #334155' : '1px solid #e5e7eb' }}
-                  >
-                    <div>{slot.start}</div>
-                    <div className="text-gray-400 text-xs">{slot.end}</div>
-                  </td>
-
-                  {/* Day Columns */}
-                  {DAYS.map(day => {
-                    const seance = getSeanceForSlot(day, slotIndex);
-                    const isCovered = isCellCovered(day, slotIndex);
-
-                    if (isCovered) {
-                      return null;
-                    }
-
-                    const rowspan = seance ? getSeanceRowspan(seance, slotIndex) : 1;
-
-                    return (
-                      <td
-                        key={`${day}-${slotIndex}`}
-                        className="px-3 py-2 align-top border-l border-gray-200 dark:border-slate-600"
-                        rowSpan={rowspan}
-                        style={{ height: `${rowspan * 160}px` }}
-                      >
-                        {seance ? (
-                          <div
-                            className="rounded-lg p-3 flex flex-col gap-1"
-                            style={{
-                              backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : seance.bgColor,
-                              borderLeft: `4px solid ${seance.borderColor}`,
-                              height: '100%',
-                            }}
-                          >
-                            {/* Code - Bold */}
-                            <div className="text-sm font-bold" style={{ color: seance.borderColor }}>
-                              {seance.code}
-                            </div>
-
-                            {/* Room/Salle */}
-                            <div className={`text-xs flex items-start gap-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <span className="flex-shrink-0">📍</span>
-                              <span>{seance.room}</span>
-                            </div>
-
-                            {/* Status Button */}
-                            <div className="mt-auto pt-2">
-                              <button
-                                className="w-full px-2 py-1 text-xs font-semibold rounded text-white"
-                                style={{
-                                  backgroundColor: seance.borderColor,
-                                }}
-                              >
-                                {seance.type}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div />
-                        )}
-                      </td>
-                    );
-                  })}
+          ) : !allFiltersSelected ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+              <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-sm font-medium">Veuillez sélectionner une filière et un groupe</p>
+              <p className="text-xs mt-1">pour afficher l'emploi du temps</p>
+            </div>
+          ) : (
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-50/80 dark:bg-gray-800/60">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400 w-20 border-b border-gray-100 dark:border-gray-700">Horaire</th>
+                  {days.map(day => (
+                    <th key={day} className="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">{day}</th>
+                  ))}
                 </tr>
-              );
-              })}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {timeSlots.map((slot, slotIdx) => (
+                  <tr key={slotIdx} className="border-b border-gray-50 dark:border-gray-700">
+                    <td className="px-4 py-3 align-top w-20">
+                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{slot.start}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{slot.end}</div>
+                    </td>
+                    {days.map(day => {
+                      const cellEntries = getSlotEntries(day, slotIdx);
+                      return (
+                        <td key={day} className="px-2 py-2 align-top" style={{ minWidth: 145, height: 140 }}>
+                          {cellEntries.length > 0 && (
+                            <div className="space-y-1.5 h-full">
+                              {cellEntries.slice(0, 2).map(entry => {
+                                const colors = getColor(entry.module);
+                                return (
+                                  <div key={entry.id} className="relative pl-3.5 h-full">
+                                    <div className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-full ${colors.border}`} />
+                                    <div className="py-2 pr-1">
+                                      {entry.salle && (
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                          <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                          </svg>
+                                          <span className="text-xs text-gray-500 dark:text-gray-400">{entry.salle}</span>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1.5 mb-2">
+                                        <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        </svg>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">{entry.groupe}</span>
+                                      </div>
+                                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white ${entry.type === 'a_distance' ? 'bg-yellow-700' : colors.badge}`}>
+                                        {entry.type === 'a_distance' ? 'à distance' : 'Présentiele'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {cellEntries.length > 2 && (
+                                <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-medium">
+                                  +{cellEntries.length - 2} autres
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        {/* Legend */}
-        <div className="mt-6 bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4">
-          <div className="flex flex-wrap items-center gap-8">
-            {/* Breaks */}
-            {BREAKS.map((breakItem, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <div className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-full">
-                  {breakItem.name}
-                </div>
-                <span className="text-xs text-gray-600 dark:text-gray-400">
-                  {breakItem.startTime} to {breakItem.endTime}
-                </span>
-              </div>
-            ))}
-
-            <div className="h-6 w-px bg-gray-300 dark:bg-slate-600"></div>
-
-            {/* Module Codes */}
-            {Array.from(new Set(demoSeances.map(s => s.code))).sort().map(code => (
-              <div key={code} className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded"
-                  style={{ backgroundColor: getColorCode(code) }}
-                ></div>
-                <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{code}</span>
-              </div>
-            ))}
+        <div className="grid grid-cols-2 gap-4 px-6 py-4">
+          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
+            <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Morning Break</span>
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                <path strokeWidth={2} d="M12 6v6l4 2" />
+              </svg>
+              10:50 to 11:10 AM
+            </div>
+          </div>
+          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
+            <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Evening Break</span>
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                <path strokeWidth={2} d="M12 6v6l4 2" />
+              </svg>
+              15:50 to 16:10 PM
+            </div>
           </div>
         </div>
       </div>
