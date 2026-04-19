@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { useTheme } from '../../../contexts/ThemeContext';
 import axiosInstance from '../../../utils/axios';
 import toast from 'react-hot-toast';
-import { HiSortAscending, HiChevronUp, HiChevronDown, HiSearch } from 'react-icons/hi';
+import { HiSortAscending, HiChevronUp, HiChevronDown } from 'react-icons/hi';
+import { SearchInput } from '../../../components/ui';
 
 interface Module {
   id: number;
@@ -72,16 +73,12 @@ const StagiaireModulesPage: React.FC = () => {
           <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Modules</h2>
           <div className="flex items-center gap-3">
             {/* Search */}
-            <div className={`flex items-center border rounded-lg px-4 py-2 w-72 transition-colors ${isDark ? 'bg-[#1e1e28] border-[#2a2a35] focus-within:border-[#5c5c6e]' : 'bg-white border-gray-300 focus-within:border-primary-500'}`}>
-              <HiSearch className={`h-4 w-4 mr-3 flex-shrink-0 ${isDark ? 'text-[#5c5c6e]' : 'text-gray-400'}`} />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher par nom ou code..."
-                className={`text-sm bg-transparent outline-none flex-1 border-none ${isDark ? 'text-gray-100 placeholder-[#5c5c6e]' : 'text-gray-900 placeholder-gray-500'}`}
-              />
-            </div>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher par nom ou code..."
+              className="w-72"
+            />
             {/* Sort A-Z */}
             <button
               onClick={() => setSortAZ(v => !v)}

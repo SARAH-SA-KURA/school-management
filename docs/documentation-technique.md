@@ -154,7 +154,7 @@ Route protégée
 | Examens & Notes | ✓ (CRUD) | ✓ (saisie notes) | ✓ (lecture) | ✓ (lecture) |
 | Absences | ✓ (CRUD) | ✓ (saisie) | ✓ (lecture) | ✓ (lecture) |
 | Utilisateurs | ✓ | — | — | — |
-| Paramètres | ✓ | ✓ | ✓ | ✓ |
+| Paramètres généraux | ✓ | ✓ | ✓ | ✓ |
 
 ---
 

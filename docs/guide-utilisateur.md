@@ -310,7 +310,7 @@ Consultez vos résultats par module :
 
 ---
 
-### 4.6 Paramètres
+### 4.6 Paramètres généraux
 
 Modifier votre profil personnel et changer votre mot de passe.
 

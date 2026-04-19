@@ -128,7 +128,7 @@ const Sidebar: React.FC = () => {
           {
             title: 'Paramètres',
             items: [
-              { label: 'Paramètres', path: '/stagiaire/parametres', icon: <HiCog className="h-5 w-5" /> },
+              { label: 'Paramètres généraux', path: '/stagiaire/parametres', icon: <HiCog className="h-5 w-5" /> },
             ],
           },
         ];
