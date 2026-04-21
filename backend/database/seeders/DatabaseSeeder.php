@@ -386,6 +386,10 @@ class DatabaseSeeder extends Seeder
             }
         }
 
+        // Weekly hour caps: formateurs max 30h (1800 min), groups max 40h (2400 min)
+        $formateurWeeklyMinutes = [];
+        $groupWeeklyMinutes     = [];
+
         foreach ($allGroups as $group) {
             $filiereModules = $allModules->where('filiere_id', $group->filiere_id)->values();
             if ($filiereModules->isEmpty()) continue;
@@ -403,6 +407,15 @@ class DatabaseSeeder extends Seeder
                 foreach ($shuffledSlots as $slotDef) {
                     if ($assignedCount >= $targetSessions) break;
 
+                    // Calculate session duration in minutes
+                    [$dh, $dm] = array_map('intval', explode(':', $slotDef['debut']));
+                    [$fh, $fm] = array_map('intval', explode(':', $slotDef['fin']));
+                    $sessionMinutes = ($fh * 60 + $fm) - ($dh * 60 + $dm);
+
+                    // Group cap: max 40h (2400 min) per week
+                    $groupUsed = $groupWeeklyMinutes[$group->id] ?? 0;
+                    if ($groupUsed + $sessionMinutes > 2400) continue;
+
                     // Group must be free for every index this séance occupies
                     $groupFree = true;
                     foreach ($slotDef['indexes'] as $idx) {
@@ -413,13 +426,18 @@ class DatabaseSeeder extends Seeder
                     }
                     if (!$groupFree) continue;
 
-                    // Find a module whose formateur is free for all indexes
+                    // Find a module whose formateur is free for all indexes and under 30h cap
                     $chosenModule    = null;
                     $chosenFormateur = null;
                     for ($attempt = 0; $attempt < $filiereModules->count(); $attempt++) {
                         $candidate = $filiereModules[($moduleIdx + $attempt) % $filiereModules->count()];
                         $formateur = $candidate->formateurs->first();
                         if (!$formateur) continue;
+
+                        // Formateur cap: max 30h (1800 min) per week
+                        $formateurUsed = $formateurWeeklyMinutes[$formateur->id] ?? 0;
+                        if ($formateurUsed + $sessionMinutes > 1800) continue;
+
                         $formateurFree = true;
                         foreach ($slotDef['indexes'] as $idx) {
                             if (in_array($formateur->id, $slotBookings[$jour][$idx]['formateurs'], true)) {
@@ -454,6 +472,10 @@ class DatabaseSeeder extends Seeder
                         'heure_debut'  => $slotDef['debut'],
                         'heure_fin'    => $slotDef['fin'],
                     ]);
+
+                    // Update weekly hour counters
+                    $formateurWeeklyMinutes[$chosenFormateur->id] = ($formateurWeeklyMinutes[$chosenFormateur->id] ?? 0) + $sessionMinutes;
+                    $groupWeeklyMinutes[$group->id]               = ($groupWeeklyMinutes[$group->id] ?? 0) + $sessionMinutes;
 
                     // Mark every occupied index as booked
                     foreach ($slotDef['indexes'] as $idx) {
