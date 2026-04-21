@@ -80,11 +80,19 @@ const FormateurExamensPage: React.FC = () => {
           axiosInstance.get('/groups'),
           axiosInstance.get('/auth/formateur'),
         ]);
-        setFilieres(filRes.data.data);
-        setGroups(grpRes.data.data);
         const fmt = fmtRes.data.data;
+        const myModules = fmt.modules || [];
         setFormateur(fmt);
-        setModules(fmt.modules || []);
+        setModules(myModules);
+
+        // Narrow filières & groups to those this formateur actually teaches in
+        const myFiliereIds = new Set<number>(
+          myModules.map((m: any) => m.filiere_id ?? m.filiere?.id).filter(Boolean)
+        );
+        const allFilieres = filRes.data.data || [];
+        const allGroups   = grpRes.data.data || [];
+        setFilieres(allFilieres.filter((f: any) => myFiliereIds.has(f.id)));
+        setGroups(allGroups.filter((g: any) => myFiliereIds.has(g.filiere_id)));
       } catch {
         toast.error('Erreur lors du chargement des données');
       } finally {
@@ -489,22 +497,35 @@ const FormateurExamensPage: React.FC = () => {
                     {columns.map(col => (
                       <td key={col} className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
-                          {/* Grade dropdown */}
-                          <select
+                          {/* Grade input — free decimal entry, 0-20 */}
+                          <input
+                            type="text"
+                            inputMode="decimal"
                             value={row.abs[col] ? '' : row.notes[col] ?? ''}
-                            onChange={e => handleNoteChange(row.stagiaire_id, col, e.target.value)}
+                            onChange={e => {
+                              // Only digits and a single decimal separator (. or ,)
+                              const raw = e.target.value.replace(',', '.');
+                              if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                              const num = raw === '' ? '' : parseFloat(raw);
+                              if (num !== '' && (num < 0 || num > 20)) return;
+                              handleNoteChange(row.stagiaire_id, col, raw);
+                            }}
+                            onBlur={e => {
+                              // Clamp + round to 2 decimals on blur
+                              const n = parseFloat(e.target.value);
+                              if (!isNaN(n)) {
+                                const clamped = Math.max(0, Math.min(20, n));
+                                handleNoteChange(row.stagiaire_id, col, String(Math.round(clamped * 100) / 100));
+                              }
+                            }}
+                            placeholder="—"
                             disabled={row.abs[col] || inputDisabled}
                             className={`w-16 text-sm border rounded px-1.5 py-1 text-center ${
                               row.abs[col] || inputDisabled
                                 ? isDark ? 'bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed' : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
                                 : isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
                             }`}
-                          >
-                            <option value="">—</option>
-                            {GRADE_OPTIONS.map(g => (
-                              <option key={g} value={g}>{g % 1 === 0 ? g : g.toFixed(2)}</option>
-                            ))}
-                          </select>
+                          />
                           {/* ABS label + checkbox */}
                           <label className={`flex items-center gap-1 text-xs select-none ${inputDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             <input

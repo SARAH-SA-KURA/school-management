@@ -560,12 +560,22 @@ class DatabaseSeeder extends Seeder
                 }
                 // non_justifiee → both null
 
+                // Pick a valid (start, end) pair so duration is always positive
+                // and matches real OFPPT session slots.
+                $absenceSlots = [
+                    ['08:30', '10:30'], // 2h
+                    ['10:30', '12:30'], // 2h
+                    ['14:00', '16:00'], // 2h
+                    ['16:00', '18:30'], // 2h30
+                ];
+                $slot = fake()->randomElement($absenceSlots);
+
                 Absence::create([
                     'stagiaire_id' => $stag->id,
                     'module_id' => $filiereModules->random()->id,
                     'date_absence' => fake()->dateTimeBetween('2025-09-15', '2026-03-26'),
-                    'heure_debut' => fake()->randomElement(['08:30', '11:10', '13:30', '16:10']),
-                    'heure_fin' => fake()->randomElement(['10:50', '13:20', '15:50', '18:30']),
+                    'heure_debut' => $slot[0],
+                    'heure_fin'   => $slot[1],
                     'motif' => $motif,
                     'justification' => $justification,
                     'status' => $status,
@@ -584,7 +594,7 @@ class DatabaseSeeder extends Seeder
                 'module_id' => $filiereModules->random()->id,
                 'date_absence' => $today,
                 'heure_debut' => '08:30',
-                'heure_fin' => '10:50',
+                'heure_fin' => '10:30',
                 'motif' => null,
                 'justification' => null,
                 'status' => 'non_justifiee',

@@ -426,7 +426,7 @@ class StagiaireController extends Controller
         $absences = $absenceRecords->map(function ($a) use (&$totalHours, &$justifiedHours, &$unjustifiedHours, &$justifiedCount, &$unjustifiedCount) {
             $start = \Carbon\Carbon::createFromTimeString($a->heure_debut);
             $end   = \Carbon\Carbon::createFromTimeString($a->heure_fin);
-            $hours = $end->diffInMinutes($start) / 60;
+            $hours = abs($end->diffInMinutes($start)) / 60;
 
             $totalHours += $hours;
             if ($a->status === 'justifiee') {
