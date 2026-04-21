@@ -180,7 +180,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Directeur + Formateur — notes (grades)
     // (formateur for own modules; directeur may override)
     Route::middleware('role:directeur,formateur')->group(function () {
-        Route::post('/notes/batch',   [NoteController::class, 'batchStore']);
-        Route::put ('/notes/{note}',  [NoteController::class, 'update']);
+        Route::post('/notes/batch',        [NoteController::class, 'batchStore']);
+        Route::put ('/notes/{note}',       [NoteController::class, 'update']);
+    });
+
+    // Directeur only — validate notes per group+module
+    Route::middleware('role:directeur')->group(function () {
+        Route::post('/notes/validate',     [NoteController::class, 'validate']);
+        Route::get ('/notes/validations',  [NoteController::class, 'validations']);
     });
 });

@@ -71,6 +71,10 @@ export const notesApi = {
 export const gradesApi = {
   getByGroupModule: (group_id: number, module_id: number) =>
     axiosInstance.get('/grades', { params: { group_id, module_id } }),
+  validate: (group_id: number, module_id: number) =>
+    axiosInstance.post('/notes/validate', { group_id, module_id }),
+  getValidations: (group_id: number) =>
+    axiosInstance.get('/notes/validations', { params: { group_id } }),
 };
 
 // Dropdown data (all active, no pagination)

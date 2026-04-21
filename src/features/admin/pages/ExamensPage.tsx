@@ -271,19 +271,22 @@ const ExamensPage: React.FC = () => {
   const planningFilterGroups: SelectOption[] = allGroups.map((g: any) => ({ value: String(g.id), label: g.nom }));
 
   // ================================================================
-  // NOTES TAB — existing grade viewer
+  // NOTES TAB
   // ================================================================
   const [modules, setModules] = useState<any[]>([]);
   const [selectedFiliere, setSelectedFiliere] = useState('');
   const [selectedGroupe, setSelectedGroupe] = useState('');
-  const [selectedModule, setSelectedModule] = useState('');
+  // drill-down: null = module list, object = notes for that module
+  const [activeModule, setActiveModule] = useState<any | null>(null);
   const [search, setSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [sortKey, setSortKey] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [students, setStudents] = useState<StudentGrade[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
+  // validated module IDs for the selected group
+  const [validatedModuleIds, setValidatedModuleIds] = useState<Set<number>>(new Set());
+  const [validatingId, setValidatingId] = useState<number | null>(null);
 
   const filteredGroups = useMemo(() => {
     if (!selectedFiliere) return [];
@@ -291,40 +294,52 @@ const ExamensPage: React.FC = () => {
   }, [selectedFiliere, allGroups]);
 
   const handleFiliereChange = (val: string) => {
-    setSelectedFiliere(val); setSelectedGroupe(''); setSelectedModule('');
-    setModules([]); setStudents([]); setPage(1);
+    setSelectedFiliere(val); setSelectedGroupe('');
+    setModules([]); setStudents([]); setActiveModule(null);
+    setValidatedModuleIds(new Set()); setPage(1);
   };
 
   const handleGroupeChange = (val: string) => {
-    setSelectedGroupe(val); setSelectedModule('');
-    setStudents([]); setPage(1);
+    setSelectedGroupe(val); setStudents([]); setActiveModule(null); setPage(1);
+    setValidatedModuleIds(new Set());
     if (val) {
       const group = allGroups.find((g: any) => String(g.id) === val);
       if (group?.filiere_id) {
         modulesApi.getAll({ filiere_id: group.filiere_id, per_page: 100 })
           .then(res => setModules(res.data?.data || []))
           .catch(() => {});
+        gradesApi.getValidations(Number(val))
+          .then(res => {
+            const ids = (res.data?.data || []).map((v: any) => v.module_id);
+            setValidatedModuleIds(new Set(ids));
+          }).catch(() => {});
       }
     } else setModules([]);
   };
 
-  const handleModuleChange = (val: string) => {
-    setSelectedModule(val); setStudents([]); setPage(1);
-  };
-
-  const allFiltersSelected = Boolean(selectedFiliere && selectedGroupe && selectedModule);
-
-  const fetchGrades = useCallback(async () => {
-    if (!allFiltersSelected || activeTab !== 'notes') return;
+  const openModuleNotes = async (mod: any) => {
+    setActiveModule(mod); setStudents([]); setPage(1); setSearch(''); setSortKey('');
+    if (!selectedGroupe) return;
     setLoading(true);
     try {
-      const res = await gradesApi.getByGroupModule(Number(selectedGroupe), Number(selectedModule));
+      const res = await gradesApi.getByGroupModule(Number(selectedGroupe), mod.id);
       setStudents(res.data?.data || []);
     } catch { setStudents([]); }
     setLoading(false);
-  }, [selectedGroupe, selectedModule, allFiltersSelected, activeTab]);
+  };
 
-  useEffect(() => { fetchGrades(); }, [fetchGrades]);
+  const handleValider = async (moduleId: number) => {
+    if (!selectedGroupe) return;
+    setValidatingId(moduleId);
+    try {
+      await gradesApi.validate(Number(selectedGroupe), moduleId);
+      setValidatedModuleIds(prev => { const s = new Set(prev); s.add(moduleId); return s; });
+      toast.success('Notes validées avec succès');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erreur lors de la validation');
+    }
+    setValidatingId(null);
+  };
 
   const filteredStudents = useMemo(() => {
     if (!search) return students;
@@ -346,16 +361,6 @@ const ExamensPage: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(sortedStudents.length / ROWS_PER_PAGE));
   const pagedStudents = sortedStudents.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
 
-  const toggleAll = () => {
-    if (selectedIds.size === pagedStudents.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(pagedStudents.map(s => s.stagiaire_id)));
-  };
-  const toggleOne = (id: number) => {
-    const next = new Set(selectedIds);
-    next.has(id) ? next.delete(id) : next.add(id);
-    setSelectedIds(next);
-  };
-
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
@@ -369,9 +374,7 @@ const ExamensPage: React.FC = () => {
 
   const handleExport = () => {
     if (sortedStudents.length === 0) { toast.error('Aucune donnée à exporter'); return; }
-    const filiere = filieres.find((f: any) => String(f.id) === selectedFiliere);
     const groupe = allGroups.find((g: any) => String(g.id) === selectedGroupe);
-    const mod = modules.find((m: any) => String(m.id) === selectedModule);
     const rows = sortedStudents.map((s, i) => ({
       '#': i + 1,
       'Stagiaire': `${s.prenom} ${s.nom}`,
@@ -382,7 +385,7 @@ const ExamensPage: React.FC = () => {
     ws['!cols'] = [{ wch: 5 }, { wch: 25 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Notes');
-    XLSX.writeFile(wb, `Notes_${filiere?.nom || 'Filiere'}_${groupe?.nom || 'Groupe'}_${mod?.nom || 'Module'}.xlsx`);
+    XLSX.writeFile(wb, `Notes_${groupe?.nom || 'Groupe'}_${activeModule?.nom || 'Module'}.xlsx`);
     toast.success(`${sortedStudents.length} notes exportées`);
   };
 
@@ -564,124 +567,207 @@ const ExamensPage: React.FC = () => {
 
       {activeTab === 'notes' && (
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
-          <div className="px-6 pt-5 pb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Notes par module</h2>
+
+          {/* Header + filters */}
+          <div className="px-6 pt-5 pb-4 flex items-center gap-3 flex-wrap">
+            {activeModule ? (
+              <>
+                <button
+                  onClick={() => { setActiveModule(null); setStudents([]); setSearch(''); setSortKey(''); }}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                  Retour aux modules
+                </button>
+                <span className="text-gray-300 dark:text-gray-600">|</span>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{activeModule.nom}</h2>
+                {(() => {
+                  const f = activeModule.formateurs?.[0];
+                  const name = f?.user ? `${f.user.prenom} ${f.user.nom}` : null;
+                  return name ? <span className="text-sm text-gray-500 dark:text-gray-400">— {name}</span> : null;
+                })()}
+                <div className="ml-auto flex items-center gap-2">
+                  <div className="relative">
+                    <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Rechercher..."
+                      className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px] outline-none" />
+                  </div>
+                  <button onClick={handleExport} disabled={sortedStudents.length === 0}
+                    className="flex items-center gap-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <HiDownload className="h-4 w-4" /> Export
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mr-2">Notes par module</h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Filière</span>
+                  <select value={selectedFiliere} onChange={e => handleFiliereChange(e.target.value)}
+                    className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px]">
+                    <option value="">Choisir filière</option>
+                    {filieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Groupe</span>
+                  <select value={selectedGroupe} onChange={e => handleGroupeChange(e.target.value)}
+                    className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[130px]"
+                    disabled={!selectedFiliere}>
+                    <option value="">Choisir groupe</option>
+                    {filteredGroups.map((g: any) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="flex items-center gap-4 px-6 pb-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 dark:text-gray-300">Filière</span>
-              <select value={selectedFiliere} onChange={(e) => handleFiliereChange(e.target.value)}
-                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px]">
-                <option value="">Choisir filière</option>
-                {filieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 dark:text-gray-300">Groupe</span>
-              <select value={selectedGroupe} onChange={(e) => handleGroupeChange(e.target.value)}
-                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[120px]"
-                disabled={!selectedFiliere}>
-                <option value="">Choisir groupe</option>
-                {filteredGroups.map((g: any) => <option key={g.id} value={g.id}>{g.nom}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 dark:text-gray-300">Module</span>
-              <select value={selectedModule} onChange={(e) => handleModuleChange(e.target.value)}
-                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[180px]"
-                disabled={!selectedGroupe}>
-                <option value="">Choisir module</option>
-                {modules.map((m: any) => <option key={m.id} value={m.id}>{m.nom}</option>)}
-              </select>
-            </div>
-            <div className="relative ml-auto">
-              <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
-              <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search"
-                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px] outline-none placeholder-gray-400 dark:placeholder-gray-500" />
-            </div>
-            <button onClick={handleExport} disabled={sortedStudents.length === 0}
-              className="flex items-center gap-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 disabled:cursor-not-allowed">
-              <HiDownload className="h-4 w-4" /> Export
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50/50 dark:bg-gray-800/60 border-y border-gray-100 dark:border-gray-700">
-                  <th className="w-10 px-4 py-3">
-                    <input type="checkbox" checked={selectedIds.size === pagedStudents.length && pagedStudents.length > 0} onChange={toggleAll}
-                      className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500" />
-                  </th>
-                  {[
-                    { key: 'stagiaire', label: 'Stagiaire' },
-                    { key: 'cc1', label: 'CC1' }, { key: 'cc2', label: 'CC2' }, { key: 'cc3', label: 'CC3' },
-                    { key: 'efm', label: 'EFM' }, { key: 'moyenne', label: 'Moyenne' },
-                  ].map(col => (
-                    <th key={col.key} className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 cursor-pointer select-none" onClick={() => handleSort(col.key)}>
-                      <span className="inline-flex items-center">{col.label}<SortIcon col={col.key} /></span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                {!allFiltersSelected ? (
-                  <tr><td colSpan={7} className="px-4 py-16 text-center text-gray-400 dark:text-gray-500">
-                    <div className="flex flex-col items-center gap-2">
-                      <svg className="h-10 w-10 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="text-sm">Veuillez sélectionner une filière, un groupe et un module pour afficher les notes</p>
-                    </div>
-                  </td></tr>
-                ) : loading ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Chargement...</td></tr>
-                ) : pagedStudents.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Aucune note trouvée</td></tr>
-                ) : pagedStudents.map((s) => (
-                  <tr key={s.stagiaire_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50">
-                    <td className="px-4 py-3.5"><input type="checkbox" checked={selectedIds.has(s.stagiaire_id)} onChange={() => toggleOne(s.stagiaire_id)} className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500" /></td>
-                    <td className="px-4 py-3.5 text-sm text-gray-900 dark:text-gray-100 font-medium">{s.prenom} {s.nom}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.cc1 ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.cc2 ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.cc3 ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.efm ?? '-'}</td>
-                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 dark:text-gray-100">{s.moyenne ?? '-'}</td>
+          {/* MODULE LIST VIEW */}
+          {!activeModule && (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50/50 dark:bg-gray-800/60 border-y border-gray-100 dark:border-gray-700">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Module</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Formateur</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Statut</th>
+                    {canValidate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Action</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {!selectedGroupe ? (
+                    <tr><td colSpan={4} className="px-4 py-16 text-center text-gray-400 dark:text-gray-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <svg className="h-10 w-10 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-sm">Sélectionnez une filière et un groupe pour voir les modules</p>
+                      </div>
+                    </td></tr>
+                  ) : modules.length === 0 ? (
+                    <tr><td colSpan={4} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Aucun module trouvé</td></tr>
+                  ) : modules.map((mod: any) => {
+                    const f = mod.formateurs?.[0];
+                    const formateurName = f?.user ? `${f.user.prenom} ${f.user.nom}` : '—';
+                    const isValidated = validatedModuleIds.has(mod.id);
+                    const isValidating = validatingId === mod.id;
+                    return (
+                      <tr key={mod.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50">
+                        <td className="px-4 py-3.5">
+                          <button
+                            onClick={() => openModuleNotes(mod)}
+                            className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline text-left"
+                          >
+                            {mod.nom}
+                          </button>
+                          {mod.code && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{mod.code}</span>}
+                        </td>
+                        <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-300">{formateurName}</td>
+                        <td className="px-4 py-3.5">
+                          {isValidated ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700">
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                              Validé
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700">
+                              En attente
+                            </span>
+                          )}
+                        </td>
+                        {canValidate && (
+                          <td className="px-4 py-3.5">
+                            <button
+                              onClick={() => handleValider(mod.id)}
+                              disabled={isValidated || isValidating}
+                              className="px-4 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-primary-600 hover:bg-primary-700 text-white"
+                            >
+                              {isValidating ? '...' : isValidated ? 'Validé' : 'Valider'}
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-          {allFiltersSelected && sortedStudents.length > 0 && (
+          {/* NOTES DETAIL VIEW */}
+          {activeModule && (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50/50 dark:bg-gray-800/60 border-y border-gray-100 dark:border-gray-700">
+                    {[
+                      { key: 'stagiaire', label: 'Stagiaire' },
+                      { key: 'cc1', label: 'CC1' }, { key: 'cc2', label: 'CC2' }, { key: 'cc3', label: 'CC3' },
+                      { key: 'efm', label: 'EFM' }, { key: 'moyenne', label: 'Moyenne' },
+                    ].map(col => (
+                      <th key={col.key} className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 cursor-pointer select-none" onClick={() => handleSort(col.key)}>
+                        <span className="inline-flex items-center">{col.label}<SortIcon col={col.key} /></span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {loading ? (
+                    <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Chargement...</td></tr>
+                  ) : pagedStudents.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Aucune note trouvée</td></tr>
+                  ) : pagedStudents.map(s => (
+                    <tr key={s.stagiaire_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50">
+                      <td className="px-4 py-3.5 text-sm font-medium text-gray-900 dark:text-gray-100">{s.prenom} {s.nom}</td>
+                      <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.cc1 ?? '—'}</td>
+                      <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.cc2 ?? '—'}</td>
+                      <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.cc3 ?? '—'}</td>
+                      <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{s.efm ?? '—'}</td>
+                      <td className="px-4 py-3.5">
+                        <span className={`text-sm font-semibold ${s.moyenne !== null ? (s.moyenne >= 10 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400') : 'text-gray-400'}`}>
+                          {s.moyenne ?? '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination (notes view) */}
+          {activeModule && sortedStudents.length > ROWS_PER_PAGE && (
             <div className="flex items-center justify-end px-6 py-4 border-t border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-1">
                 <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed">Pre</button>
+                  className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed">Préc</button>
                 {paginationRange.map((item, idx) =>
                   typeof item === 'string' ? (
-                    <span key={`dots-${idx}`} className="px-2 py-1.5 text-sm text-gray-400 dark:text-gray-500">....</span>
+                    <span key={`dots-${idx}`} className="px-2 py-1.5 text-sm text-gray-400">…</span>
                   ) : (
                     <button key={item} onClick={() => setPage(item)}
                       className={`w-8 h-8 rounded-lg text-sm font-medium ${page === item ? 'bg-primary-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>{item}</button>
                   )
                 )}
                 <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+                  className="px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed">Suiv</button>
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Valider button — Directeur only, only on Notes tab */}
-      {activeTab === 'notes' && canValidate && allFiltersSelected && sortedStudents.length > 0 && (
-        <div className="flex justify-end mt-6">
-          <button onClick={() => toast.success('Notes validées avec succès')}
-            className="px-8 py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 transition-colors">
-            Valider les notes
-          </button>
+          {/* Valider button in notes detail view */}
+          {activeModule && canValidate && sortedStudents.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-sm text-gray-500 dark:text-gray-400">{sortedStudents.length} stagiaire{sortedStudents.length > 1 ? 's' : ''}</span>
+              <button
+                onClick={() => handleValider(activeModule.id)}
+                disabled={validatedModuleIds.has(activeModule.id) || validatingId === activeModule.id}
+                className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {validatingId === activeModule.id ? 'Validation...' : validatedModuleIds.has(activeModule.id) ? 'Déjà validé' : 'Valider les notes'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

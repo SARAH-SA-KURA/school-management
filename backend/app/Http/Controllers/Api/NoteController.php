@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Note, Examen, Stagiaire};
+use App\Models\{Note, Examen, Stagiaire, NoteValidation};
 use App\Services\NotificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -176,5 +176,36 @@ class NoteController extends Controller
         }
 
         return $this->success($results);
+    }
+
+    public function validate(Request $request)
+    {
+        $request->validate([
+            'group_id'  => 'required|exists:groups,id',
+            'module_id' => 'required|exists:modules,id',
+        ]);
+
+        NoteValidation::updateOrCreate(
+            ['group_id' => $request->group_id, 'module_id' => $request->module_id],
+            ['validated_by' => $request->user()->id, 'validated_at' => now()]
+        );
+
+        return $this->success([], 'Notes validées avec succès');
+    }
+
+    public function validations(Request $request)
+    {
+        $request->validate(['group_id' => 'required|exists:groups,id']);
+
+        $rows = NoteValidation::where('group_id', $request->group_id)
+            ->with('validator:id,nom,prenom')
+            ->get()
+            ->map(fn($v) => [
+                'module_id'    => $v->module_id,
+                'validated_at' => $v->validated_at,
+                'validated_by' => $v->validator ? "{$v->validator->prenom} {$v->validator->nom}" : null,
+            ]);
+
+        return $this->success($rows);
     }
 }
