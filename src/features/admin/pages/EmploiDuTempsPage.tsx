@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { dropdownApi, emploiDuTempsApi, modulesApi } from '../../../api/crudApi';
 import { useRolePath } from '../../../hooks/useRolePath';
 import { useAuth } from '../../../hooks/useAuth';
-import { Modal, Button, Input, Select, ConfirmDialog } from '../../../components/ui';
+import { Modal, Button, Select, ConfirmDialog } from '../../../components/ui';
 import type { SelectOption } from '../../../types';
 import { HiX, HiPlus, HiPencil, HiTrash, HiDownload } from 'react-icons/hi';
 import toast from 'react-hot-toast';
@@ -29,13 +29,11 @@ interface ScheduleEntry {
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const daysLower = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
-// 6 buckets per OFPPT daily rhythm
 const timeSlots = [
-  { start: '08:30', end: '10:30', isBreak: false },
-  { start: '10:30', end: '12:30', isBreak: false },
-  { start: '12:30', end: '14:00', isBreak: true, label: 'Pause déjeuner' },
-  { start: '14:00', end: '16:00', isBreak: false },
-  { start: '16:00', end: '18:30', isBreak: false },
+  { start: '08:30', end: '11:00' },
+  { start: '11:00', end: '13:30' },
+  { start: '13:30', end: '16:00' },
+  { start: '16:00', end: '18:30' },
 ];
 
 const WEEKS = [
@@ -112,10 +110,21 @@ interface SessionFormState {
   salle_id: string;
 }
 
+const VALID_SLOTS = [
+  { debut: '08:30', fin: '11:00', label: '08:30 → 11:00  (2h30)' },
+  { debut: '08:30', fin: '13:30', label: '08:30 → 13:30  (5h00)' },
+  { debut: '11:00', fin: '13:30', label: '11:00 → 13:30  (2h30)' },
+  { debut: '13:30', fin: '16:00', label: '13:30 → 16:00  (2h30)' },
+  { debut: '13:30', fin: '18:30', label: '13:30 → 18:30  (5h00)' },
+  { debut: '16:00', fin: '18:30', label: '16:00 → 18:30  (2h30)' },
+];
+
+const SLOT_OPTIONS = VALID_SLOTS.map(s => ({ value: `${s.debut}|${s.fin}`, label: s.label }));
+
 const emptySessionForm: SessionFormState = {
   jour: 'lundi',
   heure_debut: '08:30',
-  heure_fin: '10:30',
+  heure_fin: '11:00',
   group_id: '',
   module_id: '',
   formateur_id: '',
@@ -249,11 +258,48 @@ const EmploiDuTempsPage: React.FC = () => {
     );
   };
 
+  // For each (day, slotIdx), compute whether it has a 5h session (→ rowSpan=2)
+  // and whether it is consumed by a span from the row above (→ skip <td>).
+  // rowSpan spanning is only active when a single formateur is selected
+  const spanMap = useMemo(() => {
+    const hasSpan: Record<string, Record<number, boolean>> = {};
+    const consumed: Record<string, Record<number, boolean>> = {};
+    days.forEach(d => { hasSpan[d] = {}; consumed[d] = {}; });
+
+    if (!formateur) return { hasSpan, consumed };
+
+    filteredEntries.forEach(e => {
+      const dur = toMinutes(e.heureFin) - toMinutes(e.heureDebut);
+      if (dur < 300) return;
+      const dayKey = days.find(d => d.toLowerCase() === e.jour.toLowerCase());
+      if (!dayKey) return;
+      const si = e.slot;
+      if (si + 1 < timeSlots.length) {
+        hasSpan[dayKey][si] = true;
+        consumed[dayKey][si + 1] = true;
+      }
+    });
+    return { hasSpan, consumed };
+  }, [filteredEntries, formateur]);
+
   const getColor = (moduleName: string) =>
     colorMap.get(moduleName) || COLOR_SCHEMES[0];
 
   const activeFiltersCount = [formateur, filiere, groupe].filter(Boolean).length;
   const totalSessions = filteredEntries.length;
+
+  const masseHoraire = useMemo(() => {
+    if (!formateur) return null;
+    const formateurEntries = weekEntries.filter(e => e.formateurId === Number(formateur));
+    const total = formateurEntries.reduce((acc, e) => {
+      const start = toMinutes(e.heureDebut);
+      const end = toMinutes(e.heureFin);
+      return acc + Math.max(0, end - start);
+    }, 0);
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+  }, [formateur, weekEntries]);
 
   const clearFilters = () => { setFormateur(''); setFiliere(''); setGroupe(''); };
 
@@ -350,10 +396,6 @@ const EmploiDuTempsPage: React.FC = () => {
   const handleSaveSession = async () => {
     if (!form.jour || !form.heure_debut || !form.heure_fin || !form.group_id || !form.module_id || !form.formateur_id || !form.salle_id) {
       toast.error('Tous les champs sont requis');
-      return;
-    }
-    if (form.heure_debut >= form.heure_fin) {
-      toast.error('L\'heure de fin doit être après l\'heure de début');
       return;
     }
     setSaving(true);
@@ -514,15 +556,26 @@ const EmploiDuTempsPage: React.FC = () => {
 
           <div className="flex-1" />
 
-          <select
-            value={formateur}
-            onChange={(e) => { setFormateur(e.target.value); setFiliere(''); setGroupe(''); }}
-            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
-          >
-            <option value="">Tous les formateurs</option>
-            {formateursList.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={formateur}
+              onChange={(e) => { setFormateur(e.target.value); setFiliere(''); setGroupe(''); }}
+              className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+            >
+              <option value="">Tous les formateurs</option>
+              {formateursList.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
+            </select>
+            {masseHoraire && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 whitespace-nowrap">
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                  <path strokeWidth={2} d="M12 6v6l4 2" />
+                </svg>
+                Masse horaire : {masseHoraire}
+              </span>
+            )}
+          </div>
 
           <select
             value={filiere}
@@ -581,25 +634,6 @@ const EmploiDuTempsPage: React.FC = () => {
               </thead>
               <tbody>
                 {timeSlots.map((slot, slotIdx) => {
-                  if (slot.isBreak) {
-                    return (
-                      <tr key={slotIdx} className="border-b border-gray-50 dark:border-gray-700 bg-amber-50/40 dark:bg-amber-900/10">
-                        <td className="px-4 py-3 align-middle w-24">
-                          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{slot.start}</div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{slot.end}</div>
-                        </td>
-                        <td colSpan={days.length} className="px-4 py-4 text-center">
-                          <span className="inline-flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 font-medium">
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                              <path strokeWidth={2} d="M12 6v6l4 2" />
-                            </svg>
-                            {slot.label || 'Pause'} ({slot.start} – {slot.end})
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  }
                   return (
                   <tr key={slotIdx} className="border-b border-gray-50 dark:border-gray-700">
                     <td className="px-4 py-3 align-top w-24">
@@ -607,14 +641,20 @@ const EmploiDuTempsPage: React.FC = () => {
                       <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{slot.end}</div>
                     </td>
                     {days.map(day => {
+                      // Cell consumed by a rowSpan=2 from the row above → skip entirely
+                      if (spanMap.consumed[day]?.[slotIdx]) return null;
+
                       const isSaturdayAfterNoon = day === 'Samedi' && slotIdx >= 2;
                       const cellEntries = isSaturdayAfterNoon ? [] : getSlotEntries(day, slotIdx);
+                      const rowSpan = (!isSaturdayAfterNoon && spanMap.hasSpan[day]?.[slotIdx]) ? 2 : 1;
+                      const cellHeight = rowSpan === 2 ? 300 : 150;
                       const max = 3;
                       return (
                         <td
                           key={day}
+                          rowSpan={rowSpan}
                           className={`px-2 py-2 align-top border-l border-gray-50 dark:border-gray-700 ${isSaturdayAfterNoon ? 'bg-gray-50 dark:bg-gray-800/30' : ''}`}
-                          style={{ minWidth: 160, height: 150 }}
+                          style={{ minWidth: 160, height: cellHeight }}
                           onDoubleClick={() => {
                             if (cellEntries.length > 0) {
                               setCellDetail({ day, slotIdx, entries: cellEntries });
@@ -630,31 +670,42 @@ const EmploiDuTempsPage: React.FC = () => {
                             <div className="space-y-1.5 h-full">
                               {cellEntries.slice(0, max).map(entry => {
                                 const colors = getColor(entry.module);
+                                const isLong = !!formateur && toMinutes(entry.heureFin) - toMinutes(entry.heureDebut) >= 300;
                                 return (
                                   <div
                                     key={entry.id}
                                     onDoubleClick={(e) => { e.stopPropagation(); setDetail(entry); }}
-                                    className="relative pl-3 py-1.5 pr-1 rounded hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+                                    className={`relative pl-3 pr-1 rounded cursor-pointer border-l-0 hover:bg-gray-50 dark:hover:bg-gray-700/40 ${isLong ? 'py-3 flex flex-col justify-between' : 'py-1.5'}`}
+                                    style={isLong ? { minHeight: 260 } : {}}
                                     title="Double-cliquer pour voir les détails"
                                   >
                                     <div className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-full ${colors.border}`} />
-                                    <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                                      {entry.module || '—'}
-                                    </div>
-                                    {(entry.heureDebut || entry.heureFin) && (
-                                      <div className="text-[10px] text-primary-600 dark:text-primary-400 font-medium mt-0.5">
-                                        {entry.heureDebut} → {entry.heureFin}
+                                    <div>
+                                      {isLong && (
+                                        <span className={`inline-block mb-1 px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${colors.badge}`}>
+                                          5h00
+                                        </span>
+                                      )}
+                                      <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                                        {entry.module || '—'}
                                       </div>
-                                    )}
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{entry.groupe}</span>
-                                      {entry.type === 'a_distance' ? (
-                                        <span className="text-[10px] text-yellow-700 dark:text-yellow-400">· à distance</span>
-                                      ) : entry.salle ? (
-                                        <span className="text-[10px] text-gray-400 dark:text-gray-500">· {entry.salle}</span>
-                                      ) : null}
+                                      {(entry.heureDebut || entry.heureFin) && (
+                                        <div className={`font-medium mt-0.5 ${isLong ? 'text-[11px] text-primary-700 dark:text-primary-300' : 'text-[10px] text-primary-600 dark:text-primary-400'}`}>
+                                          {entry.heureDebut} → {entry.heureFin}
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{entry.formateur}</div>
+                                    <div>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{entry.groupe}</span>
+                                        {entry.type === 'a_distance' ? (
+                                          <span className="text-[10px] text-yellow-700 dark:text-yellow-400">· à distance</span>
+                                        ) : entry.salle ? (
+                                          <span className="text-[10px] text-gray-400 dark:text-gray-500">· {entry.salle}</span>
+                                        ) : null}
+                                      </div>
+                                      <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{entry.formateur}</div>
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -679,28 +730,6 @@ const EmploiDuTempsPage: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 px-6 py-4">
-          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
-            <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Morning Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
-              10:30 to 10:50 AM
-            </div>
-          </div>
-          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
-            <span className="inline-block px-2.5 py-0.5 bg-red-500 text-white rounded text-xs font-medium mb-2">Afternoon Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
-              12:30 PM to 14:00 PM
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Single session detail modal */}
@@ -816,16 +845,24 @@ const EmploiDuTempsPage: React.FC = () => {
         }
       >
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <Select
               label="Jour"
               value={form.jour}
-              onChange={e => setForm(p => ({ ...p, jour: e.target.value }))}
+              onChange={e => setForm(p => ({ ...p, jour: e.target.value, formateur_id: '', salle_id: '' }))}
               options={JOUR_OPTIONS}
               required
             />
-            <Input label="Heure début" type="time" value={form.heure_debut} onChange={e => setForm(p => ({ ...p, heure_debut: e.target.value }))} required />
-            <Input label="Heure fin" type="time" value={form.heure_fin} onChange={e => setForm(p => ({ ...p, heure_fin: e.target.value }))} required />
+            <Select
+              label="Créneau horaire"
+              value={`${form.heure_debut}|${form.heure_fin}`}
+              onChange={e => {
+                const [debut, fin] = e.target.value.split('|');
+                setForm(p => ({ ...p, heure_debut: debut, heure_fin: fin, formateur_id: '', salle_id: '' }));
+              }}
+              options={[{ value: '', label: 'Choisir un créneau' }, ...SLOT_OPTIONS]}
+              required
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Select
@@ -855,8 +892,8 @@ const EmploiDuTempsPage: React.FC = () => {
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {form.module_id
                   ? (formFormateurOptions.length === 0
-                      ? <span className="text-red-600 dark:text-red-400">Aucun formateur disponible (vérifiez le créneau ou les affectations du module)</span>
-                      : `${formFormateurOptions.length} formateur(s) disponible(s) pour ce module à ce créneau`)
+                      ? <span className="text-red-600 dark:text-red-400">Aucun formateur disponible à ce créneau — un formateur ne peut pas enseigner deux groupes simultanément, même à distance</span>
+                      : `${formFormateurOptions.length} formateur(s) libre(s) à ce créneau`)
                   : 'Choisissez un module pour filtrer les formateurs'}
               </p>
             </div>

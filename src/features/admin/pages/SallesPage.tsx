@@ -12,7 +12,7 @@ import { useCan } from '../../../hooks/useCan';
 
 const DISPONIBILITE_OPTIONS = [
   { value: 'disponible', label: 'Disponible' },
-  { value: 'occupee', label: 'Occupée' },
+  { value: 'occupee', label: 'Indisponible' },
 ];
 
 const SallesPage: React.FC = () => {
@@ -110,7 +110,7 @@ const SallesPage: React.FC = () => {
       ) : (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400">
           <span className="w-2 h-2 rounded-full bg-red-500"></span>
-          Occupée
+          Indisponible
         </span>
       ),
     },

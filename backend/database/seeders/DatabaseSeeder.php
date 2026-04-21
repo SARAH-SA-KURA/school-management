@@ -358,30 +358,31 @@ class DatabaseSeeder extends Seeder
         }
 
         // ──────────────── Emploi du temps ────────────────
-        // Conflict-free scheduler: for each (jour, slot), tracks which
-        // formateurs, salles, and groups are already booked so nobody is
-        // physically double-booked.
+        // Only the 6 valid OFPPT séance combinations (2h30 or 5h00).
+        // 'indexes' lists which of the 4 daily slot positions [0-3] the séance occupies
+        // so that a 5h session (08:30-13:30 or 13:30-18:30) correctly blocks two rows.
 
         $jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
-        // Index 2 (12:30-14:00) is the lunch break — never scheduled.
-        // Each slot has a fixed start time; duration is randomized among realistic
-        // lengths so the timetable reflects real OFPPT sessions (1h, 1h30, 2h, 2h30).
-        $creneaux = [
-            ['08:30', ['09:30', '10:00', '10:30']],          // 1h, 1h30, 2h
-            ['10:30', ['11:30', '12:00', '12:30']],          // 1h, 1h30, 2h
-            null,                                            // lunch break
-            ['14:00', ['15:00', '15:30', '16:00']],          // 1h, 1h30, 2h
-            ['16:00', ['17:00', '17:30', '18:00', '18:30']], // 1h, 1h30, 2h, 2h30
+
+        $validSlots = [
+            ['debut' => '08:30', 'fin' => '11:00', 'indexes' => [0]],
+            ['debut' => '08:30', 'fin' => '13:30', 'indexes' => [0, 1]],
+            ['debut' => '11:00', 'fin' => '13:30', 'indexes' => [1]],
+            ['debut' => '13:30', 'fin' => '16:00', 'indexes' => [2]],
+            ['debut' => '13:30', 'fin' => '18:30', 'indexes' => [2, 3]],
+            ['debut' => '16:00', 'fin' => '18:30', 'indexes' => [3]],
         ];
-        $schedulableIndexes = [0, 1, 3, 4];
+        // Saturday is half-day: only morning séances (slots 0 and 1 = before 13:30)
+        $saturdaySlots = array_values(array_filter($validSlots, fn ($s) => $s['debut'] < '13:30'));
 
         $courseSalles = $salles->filter(fn ($s) => in_array($s->type, ['cours', 'tp']))->values();
 
-        // slotBookings[jour][slotIdx] = ['formateurs' => [...], 'salles' => [...], 'groups' => [...]]
+        // slotBookings[jour][slotIndex] tracks booked IDs so nobody is double-booked.
+        // slotIndex 0=08:30, 1=11:00, 2=13:30, 3=16:00
         $slotBookings = [];
         foreach ($jours as $j) {
-            foreach ($schedulableIndexes as $idx) {
-                $slotBookings[$j][$idx] = ['formateurs' => [], 'salles' => [], 'groups' => []];
+            for ($i = 0; $i < 4; $i++) {
+                $slotBookings[$j][$i] = ['formateurs' => [], 'salles' => [], 'groups' => []];
             }
         }
 
@@ -391,58 +392,76 @@ class DatabaseSeeder extends Seeder
 
             $moduleIdx = 0;
             foreach ($jours as $jour) {
-                // Saturday: morning slots only (08:30-10:30, 10:30-12:30)
-                $daySchedulable = $jour === 'samedi' ? [0, 1] : $schedulableIndexes;
-                $slotsForDay = $jour === 'samedi'
+                $daySlots      = $jour === 'samedi' ? $saturdaySlots : $validSlots;
+                $targetSessions = $jour === 'samedi'
                     ? fake()->numberBetween(1, 2)
                     : fake()->numberBetween(2, 3);
 
-                $slotIndexes = collect($daySchedulable)->shuffle()->take($slotsForDay);
+                $shuffledSlots = collect($daySlots)->shuffle()->values();
+                $assignedCount = 0;
 
-                foreach ($slotIndexes as $slotIdx) {
-                    $slotDef = $creneaux[$slotIdx];
-                    // Pick a random end time from the available durations for this slot
-                    $possibleEnds = $slotDef[1];
-                    $slot = [$slotDef[0], $possibleEnds[array_rand($possibleEnds)]];
+                foreach ($shuffledSlots as $slotDef) {
+                    if ($assignedCount >= $targetSessions) break;
 
-                    // Skip if this group is already booked at this slot (shouldn't happen but defensive)
-                    if (in_array($group->id, $slotBookings[$jour][$slotIdx]['groups'], true)) continue;
+                    // Group must be free for every index this séance occupies
+                    $groupFree = true;
+                    foreach ($slotDef['indexes'] as $idx) {
+                        if (in_array($group->id, $slotBookings[$jour][$idx]['groups'], true)) {
+                            $groupFree = false;
+                            break;
+                        }
+                    }
+                    if (!$groupFree) continue;
 
-                    // Try to find a module whose formateur is available at this slot
-                    $chosenModule = null;
+                    // Find a module whose formateur is free for all indexes
+                    $chosenModule    = null;
                     $chosenFormateur = null;
                     for ($attempt = 0; $attempt < $filiereModules->count(); $attempt++) {
                         $candidate = $filiereModules[($moduleIdx + $attempt) % $filiereModules->count()];
                         $formateur = $candidate->formateurs->first();
                         if (!$formateur) continue;
-                        if (in_array($formateur->id, $slotBookings[$jour][$slotIdx]['formateurs'], true)) continue;
-                        $chosenModule = $candidate;
+                        $formateurFree = true;
+                        foreach ($slotDef['indexes'] as $idx) {
+                            if (in_array($formateur->id, $slotBookings[$jour][$idx]['formateurs'], true)) {
+                                $formateurFree = false;
+                                break;
+                            }
+                        }
+                        if (!$formateurFree) continue;
+                        $chosenModule    = $candidate;
                         $chosenFormateur = $formateur;
-                        $moduleIdx = ($moduleIdx + $attempt + 1) % $filiereModules->count();
+                        $moduleIdx       = ($moduleIdx + $attempt + 1) % $filiereModules->count();
                         break;
                     }
                     if (!$chosenModule) continue;
 
-                    // Pick a free salle at this slot
-                    $freeSalles = $courseSalles->filter(
-                        fn ($s) => !in_array($s->id, $slotBookings[$jour][$slotIdx]['salles'], true)
-                    )->values();
+                    // Find a salle free for all indexes
+                    $freeSalles = $courseSalles->filter(function ($s) use ($slotBookings, $jour, $slotDef) {
+                        foreach ($slotDef['indexes'] as $idx) {
+                            if (in_array($s->id, $slotBookings[$jour][$idx]['salles'], true)) return false;
+                        }
+                        return true;
+                    })->values();
                     if ($freeSalles->isEmpty()) continue;
                     $salle = $freeSalles->random();
 
                     EmploiDuTemps::create([
-                        'group_id' => $group->id,
-                        'module_id' => $chosenModule->id,
+                        'group_id'     => $group->id,
+                        'module_id'    => $chosenModule->id,
                         'formateur_id' => $chosenFormateur->id,
-                        'salle_id' => $salle->id,
-                        'jour' => $jour,
-                        'heure_debut' => $slot[0],
-                        'heure_fin' => $slot[1],
+                        'salle_id'     => $salle->id,
+                        'jour'         => $jour,
+                        'heure_debut'  => $slotDef['debut'],
+                        'heure_fin'    => $slotDef['fin'],
                     ]);
 
-                    $slotBookings[$jour][$slotIdx]['formateurs'][] = $chosenFormateur->id;
-                    $slotBookings[$jour][$slotIdx]['salles'][] = $salle->id;
-                    $slotBookings[$jour][$slotIdx]['groups'][] = $group->id;
+                    // Mark every occupied index as booked
+                    foreach ($slotDef['indexes'] as $idx) {
+                        $slotBookings[$jour][$idx]['formateurs'][] = $chosenFormateur->id;
+                        $slotBookings[$jour][$idx]['salles'][]     = $salle->id;
+                        $slotBookings[$jour][$idx]['groups'][]     = $group->id;
+                    }
+                    $assignedCount++;
                 }
             }
         }
@@ -563,10 +582,10 @@ class DatabaseSeeder extends Seeder
                 // Pick a valid (start, end) pair so duration is always positive
                 // and matches real OFPPT session slots.
                 $absenceSlots = [
-                    ['08:30', '10:30'], // 2h
-                    ['10:30', '12:30'], // 2h
-                    ['14:00', '16:00'], // 2h
-                    ['16:00', '18:30'], // 2h30
+                    ['08:30', '11:00'],
+                    ['11:00', '13:30'],
+                    ['13:30', '16:00'],
+                    ['16:00', '18:30'],
                 ];
                 $slot = fake()->randomElement($absenceSlots);
 
@@ -594,7 +613,7 @@ class DatabaseSeeder extends Seeder
                 'module_id' => $filiereModules->random()->id,
                 'date_absence' => $today,
                 'heure_debut' => '08:30',
-                'heure_fin' => '10:30',
+                'heure_fin' => '11:00',
                 'motif' => null,
                 'justification' => null,
                 'status' => 'non_justifiee',

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { formateursApi, modulesApi } from '../../../api/crudApi';
+import { formateursApi, modulesApi, dropdownApi } from '../../../api/crudApi';
 import { Formateur, TableColumn } from '../../../types';
 import { DataTable, Modal, Button, Input, ConfirmDialog } from '../../../components/ui';
 import { HiSortAscending, HiX, HiMail, HiPhone, HiCalendar, HiIdentification, HiAcademicCap, HiBookOpen, HiPlus, HiPencil, HiTrash, HiDotsHorizontal } from 'react-icons/hi';
@@ -193,12 +193,16 @@ const FormateursPage: React.FC = () => {
   const [profileLoading, setProfileLoading] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [allModules, setAllModules] = useState<any[]>([]);
+  const [allFilieres, setAllFilieres] = useState<any[]>([]);
+  const [allGroups, setAllGroups] = useState<any[]>([]);
+  const [cascadeFiliereId, setCascadeFiliereId] = useState<number | ''>('');
+  const [cascadeModuleId, setCascadeModuleId] = useState<number | ''>('');
+  const [cascadeGroupIds, setCascadeGroupIds] = useState<number[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Formateur | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [moduleSearch, setModuleSearch] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -220,7 +224,19 @@ const FormateursPage: React.FC = () => {
     modulesApi.getAll({ per_page: 200 })
       .then(res => setAllModules(res.data.data || []))
       .catch(() => {});
+    dropdownApi.filieres()
+      .then(res => setAllFilieres(res.data.data || res.data || []))
+      .catch(() => {});
   }, [canWrite]);
+
+  useEffect(() => {
+    if (!cascadeFiliereId) { setAllGroups([]); setCascadeGroupIds([]); return; }
+    dropdownApi.groups({ filiere_id: cascadeFiliereId as number })
+      .then(res => setAllGroups(res.data.data || res.data || []))
+      .catch(() => setAllGroups([]));
+    setCascadeModuleId('');
+    setCascadeGroupIds([]);
+  }, [cascadeFiliereId]);
 
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
@@ -249,16 +265,21 @@ const FormateursPage: React.FC = () => {
     setProfileLoading(false);
   };
 
+  const resetCascade = () => {
+    setCascadeFiliereId('');
+    setCascadeModuleId('');
+    setCascadeGroupIds([]);
+  };
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
-    setModuleSearch('');
+    resetCascade();
     setFormOpen(true);
   };
 
   const openEdit = async (f: Formateur) => {
     setOpenMenuId(null);
-    setModuleSearch('');
     try {
       const res = await formateursApi.getById(f.id);
       const full = res.data.data;
@@ -274,6 +295,7 @@ const FormateursPage: React.FC = () => {
         date_recrutement: (full.date_recrutement || '').slice(0, 10),
         module_ids: (full.modules || []).map((m: any) => m.id),
       });
+      resetCascade();
       setFormOpen(true);
     } catch {
       toast.error('Erreur lors du chargement du formateur');
@@ -287,6 +309,22 @@ const FormateursPage: React.FC = () => {
         ? p.module_ids.filter(x => x !== id)
         : [...p.module_ids, id],
     }));
+  };
+
+  const toggleCascadeGroup = (id: number) => {
+    setCascadeGroupIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const addModuleFromCascade = () => {
+    if (!cascadeModuleId) return;
+    const id = cascadeModuleId as number;
+    if (!form.module_ids.includes(id)) {
+      setForm(p => ({ ...p, module_ids: [...p.module_ids, id] }));
+    }
+    setCascadeModuleId('');
+    setCascadeGroupIds([]);
   };
 
   const handleSave = async () => {
@@ -412,11 +450,6 @@ const FormateursPage: React.FC = () => {
     },
   ];
 
-  const filteredModules = moduleSearch
-    ? allModules.filter(m =>
-        `${m.nom} ${m.code || ''}`.toLowerCase().includes(moduleSearch.toLowerCase())
-      )
-    : allModules;
 
   return (
     <div>
@@ -520,41 +553,100 @@ const FormateursPage: React.FC = () => {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                Modules enseignés ({form.module_ids.length})
-              </h4>
-              <input
-                type="text"
-                value={moduleSearch}
-                onChange={e => setModuleSearch(e.target.value)}
-                placeholder="Rechercher un module..."
-                className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 w-48 outline-none placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500"
-              />
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+              Modules enseignés ({form.module_ids.length})
+            </h4>
+
+            {/* Cascade selectors */}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              {/* Filière */}
+              <select
+                value={cascadeFiliereId}
+                onChange={e => setCascadeFiliereId(e.target.value ? Number(e.target.value) : '')}
+                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500"
+              >
+                <option value="">— Filière —</option>
+                {allFilieres.map((f: any) => (
+                  <option key={f.id} value={f.id}>{f.nom}</option>
+                ))}
+              </select>
+
+              {/* Module (filtered by filière) */}
+              <select
+                value={cascadeModuleId}
+                onChange={e => { setCascadeModuleId(e.target.value ? Number(e.target.value) : ''); setCascadeGroupIds([]); }}
+                disabled={!cascadeFiliereId}
+                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">— Module —</option>
+                {allModules
+                  .filter((m: any) => m.filiere_id === cascadeFiliereId)
+                  .map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.nom}</option>
+                  ))}
+              </select>
             </div>
-            <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
-              {filteredModules.length === 0 ? (
-                <p className="p-4 text-sm text-gray-400 dark:text-gray-500 text-center">Aucun module</p>
-              ) : (
-                filteredModules.map((m: any) => {
-                  const checked = form.module_ids.includes(m.id);
+
+            {/* Groupes multi-select (shown once a filière is chosen) */}
+            {cascadeFiliereId && allGroups.length > 0 && (
+              <div className="mb-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                  Groupes <span className="text-gray-400 dark:text-gray-500">(sélectionner un ou plusieurs)</span>
+                  {cascadeGroupIds.length > 0 && (
+                    <span className="ml-2 text-primary-600 dark:text-primary-400 font-medium">{cascadeGroupIds.length} sélectionné{cascadeGroupIds.length > 1 ? 's' : ''}</span>
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {allGroups.map((g: any) => {
+                    const checked = cascadeGroupIds.includes(g.id);
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => toggleCascadeGroup(g.id)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                          checked
+                            ? 'bg-primary-600 border-primary-600 text-white'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-500'
+                        }`}
+                      >
+                        {g.nom}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={addModuleFromCascade}
+              disabled={!cascadeModuleId}
+              className="mb-3 flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white disabled:text-gray-400 dark:disabled:text-gray-500 text-sm font-medium rounded-lg transition-colors"
+            >
+              <HiPlus className="h-4 w-4" /> Ajouter le module
+            </button>
+
+            {/* Selected modules chips */}
+            {form.module_ids.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {form.module_ids.map(id => {
+                  const m = allModules.find((x: any) => x.id === id);
                   return (
-                    <label key={m.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleModule(m.id)}
-                        className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{m.nom}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{m.code || '-'} · {m.filiere?.nom || 'Sans filière'}</p>
-                      </div>
-                    </label>
+                    <span key={id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700">
+                      <HiBookOpen className="h-3.5 w-3.5" />
+                      {m ? m.nom : `Module #${id}`}
+                      {m?.filiere && <span className="text-xs text-primary-400 dark:text-primary-500">· {m.filiere.nom}</span>}
+                      <button type="button" onClick={() => toggleModule(id)} className="ml-1 text-primary-400 hover:text-primary-600 dark:hover:text-primary-200">
+                        <HiX className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
                   );
-                })
-              )}
-            </div>
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 dark:text-gray-500">Aucun module sélectionné</p>
+            )}
           </div>
         </div>
       </Modal>
