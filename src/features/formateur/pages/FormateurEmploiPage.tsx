@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { dropdownApi, emploiDuTempsApi } from '../../../api/crudApi';
+import { emploiDuTempsApi } from '../../../api/crudApi';
 import axiosInstance from '../../../api/axiosInstance';
 
 interface ScheduleEntry {
@@ -26,21 +26,15 @@ const timeSlots = [
   { start: '16:10', end: '18:30' },
 ];
 
-const WEEKS = [
-  { id: 'jan', label: '12 - 17 Jan 2026' },
-  { id: 'feb', label: '9 - 14 Fév 2026' },
-  { id: 'mar', label: '23 - 28 Mar 2026' },
-];
-
-const COLOR_SCHEMES = [
-  { border: 'bg-blue-500', badge: 'bg-green-600' },
-  { border: 'bg-emerald-500', badge: 'bg-emerald-600' },
-  { border: 'bg-pink-500', badge: 'bg-pink-600' },
-  { border: 'bg-teal-600', badge: 'bg-teal-600' },
-  { border: 'bg-amber-600', badge: 'bg-amber-700' },
-  { border: 'bg-indigo-600', badge: 'bg-indigo-600' },
-  { border: 'bg-purple-500', badge: 'bg-purple-600' },
-  { border: 'bg-orange-500', badge: 'bg-orange-600' },
+const GROUP_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-pink-500',
+  'bg-teal-600',
+  'bg-amber-600',
+  'bg-indigo-600',
+  'bg-purple-500',
+  'bg-orange-500',
 ];
 
 const getSlotIndex = (heureDebut: string): number => {
@@ -51,51 +45,15 @@ const getSlotIndex = (heureDebut: string): number => {
   return 3;
 };
 
-const transformForWeek = (baseEntries: ScheduleEntry[], weekId: string): ScheduleEntry[] => {
-  if (weekId === 'mar') return baseEntries;
-  if (weekId === 'feb') {
-    return baseEntries
-      .filter(e => e.id % 7 !== 0)
-      .map(e => {
-        const dayIdx = daysLower.indexOf(e.jour);
-        const newDayIdx = dayIdx >= 0 ? (dayIdx + 1) % 5 : dayIdx;
-        return { ...e, jour: newDayIdx >= 0 ? daysLower[newDayIdx] : e.jour, slot: (e.slot + 1) % 4, type: (e.id % 5 === 0 ? 'a_distance' : 'presentiel') as 'presentiel' | 'a_distance' };
-      });
-  }
-  return baseEntries
-    .filter(e => e.id % 5 !== 0)
-    .map(e => {
-      const dayIdx = daysLower.indexOf(e.jour);
-      const newDayIdx = dayIdx >= 0 ? (dayIdx + 2) % 5 : dayIdx;
-      return { ...e, jour: newDayIdx >= 0 ? daysLower[newDayIdx] : e.jour, slot: (e.slot + 2) % 4, type: (e.id % 6 === 0 ? 'a_distance' : 'presentiel') as 'presentiel' | 'a_distance' };
-    });
-};
-
 const FormateurEmploiPage: React.FC = () => {
-  const [filiere, setFiliere] = useState('');
-  const [groupe, setGroupe] = useState('');
-  const [semaine, setSemaine] = useState('mar');
-  const [filieres, setFilieres] = useState<any[]>([]);
-  const [groupes, setGroupes] = useState<any[]>([]);
   const [entries, setEntries] = useState<ScheduleEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [formateurId, setFormateurId] = useState<number | null>(null);
 
   useEffect(() => {
-    // Fetch current formateur's ID, then load schedule data
     axiosInstance.get('/auth/formateur').then(res => {
       const id = res.data?.data?.id;
       if (id) setFormateurId(id);
-    }).catch(() => {});
-
-    dropdownApi.filieres().then(res => {
-      const data = res.data?.data || res.data;
-      if (Array.isArray(data)) setFilieres(data);
-    }).catch(() => {});
-
-    dropdownApi.groups().then(res => {
-      const data = res.data?.data || res.data;
-      if (Array.isArray(data)) setGroupes(data);
     }).catch(() => {});
 
     emploiDuTempsApi.getAll().then(res => {
@@ -119,48 +77,25 @@ const FormateurEmploiPage: React.FC = () => {
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  const weekEntries = useMemo(() => transformForWeek(entries, semaine), [entries, semaine]);
-
+  // Build color map only from this formateur's groups
   const colorMap = useMemo(() => {
-    const map = new Map<string, typeof COLOR_SCHEMES[0]>();
+    const map = new Map<string, string>();
     let idx = 0;
-    const uniqueModules = entries.map(e => e.module).filter((v, i, a) => a.indexOf(v) === i);
-    uniqueModules.forEach(mod => { map.set(mod, COLOR_SCHEMES[idx % COLOR_SCHEMES.length]); idx++; });
+    const source = formateurId ? entries.filter(e => e.formateurId === formateurId) : entries;
+    const uniqueGroups = source.map(e => e.groupe).filter((v, i, a) => a.indexOf(v) === i);
+    uniqueGroups.forEach(g => { map.set(g, GROUP_COLORS[idx % GROUP_COLORS.length]); idx++; });
     return map;
-  }, [entries]);
-
-  const filteredFilieres = useMemo(() => {
-    if (!formateurId) return filieres;
-    const ids = weekEntries.filter(e => e.formateurId === formateurId).map(e => e.filiereId).filter((v, i, a) => a.indexOf(v) === i);
-    return filieres.filter((f: any) => ids.includes(f.id));
-  }, [filieres, formateurId, weekEntries]);
-
-  const filteredGroupes = useMemo(() => {
-    let filtered = groupes;
-    if (formateurId) {
-      const ids = weekEntries.filter(e => e.formateurId === formateurId).map(e => e.groupId).filter((v, i, a) => a.indexOf(v) === i);
-      filtered = filtered.filter((g: any) => ids.includes(g.id));
-    }
-    if (filiere) filtered = filtered.filter((g: any) => String(g.filiere_id) === filiere);
-    return filtered;
-  }, [groupes, formateurId, filiere, weekEntries]);
-
-  const allFiltersSelected = !!(filiere && groupe);
+  }, [entries, formateurId]);
 
   const filteredEntries = useMemo(() => {
-    if (!allFiltersSelected) return [];
-    return weekEntries.filter(e => {
-      if (formateurId && e.formateurId !== formateurId) return false;
-      if (e.filiereId !== Number(filiere)) return false;
-      if (e.groupId !== Number(groupe)) return false;
-      return true;
-    });
-  }, [weekEntries, filiere, groupe, formateurId, allFiltersSelected]);
+    if (!formateurId) return entries;
+    return entries.filter(e => e.formateurId === formateurId);
+  }, [entries, formateurId]);
 
   const getSlotEntries = (jour: string, slotIdx: number) =>
     filteredEntries.filter(e => e.jour.toLowerCase() === jour.toLowerCase() && e.slot === slotIdx);
 
-  const getColor = (moduleName: string) => colorMap.get(moduleName) || COLOR_SCHEMES[0];
+  const getGroupColor = (groupe: string) => colorMap.get(groupe) || GROUP_COLORS[0];
 
   return (
     <div>
@@ -181,48 +116,12 @@ const FormateurEmploiPage: React.FC = () => {
         <div className="flex items-center gap-3 px-6 py-4 flex-wrap">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mr-1">Time Table</h2>
 
-          <select
-            value={filiere}
-            onChange={(e) => { setFiliere(e.target.value); setGroupe(''); }}
-            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
-          >
-            <option value="">Filière : --choisir filière</option>
-            {filteredFilieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
-          </select>
-
-          <select
-            value={groupe}
-            onChange={(e) => setGroupe(e.target.value)}
-            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
-          >
-            <option value="">Groupe : --choisir groupe</option>
-            {filteredGroupes.map((g: any) => <option key={g.id} value={g.id}>{g.nom}</option>)}
-          </select>
-
-          <select
-            value={semaine}
-            onChange={(e) => setSemaine(e.target.value)}
-            className="text-sm border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 rounded-full px-4 py-1.5 bg-white dark:bg-gray-800 appearance-none cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors pr-8"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
-          >
-            {WEEKS.map(w => <option key={w.id} value={w.id}>Semaine : {w.label}</option>)}
-          </select>
         </div>
 
         <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-            </div>
-          ) : !allFiltersSelected ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-              <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <p className="text-sm font-medium">Veuillez sélectionner une filière et un groupe</p>
-              <p className="text-xs mt-1">pour afficher l'emploi du temps</p>
             </div>
           ) : (
             <table className="w-full border-collapse">
@@ -244,43 +143,40 @@ const FormateurEmploiPage: React.FC = () => {
                     {days.map(day => {
                       const cellEntries = getSlotEntries(day, slotIdx);
                       return (
-                        <td key={day} className="px-2 py-2 align-top" style={{ minWidth: 145, height: 140 }}>
-                          {cellEntries.length > 0 && (
-                            <div className="space-y-1.5 h-full">
-                              {cellEntries.slice(0, 2).map(entry => {
-                                const colors = getColor(entry.module);
-                                return (
-                                  <div key={entry.id} className="relative pl-3.5 h-full">
-                                    <div className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-full ${colors.border}`} />
-                                    <div className="py-2 pr-1">
-                                      {entry.salle && (
-                                        <div className="flex items-center gap-1.5 mb-1">
-                                          <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                          </svg>
-                                          <span className="text-xs text-gray-500 dark:text-gray-400">{entry.salle}</span>
-                                        </div>
-                                      )}
-                                      <div className="flex items-center gap-1.5 mb-2">
-                                        <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        </svg>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400">{entry.groupe}</span>
-                                      </div>
-                                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium text-white ${entry.type === 'a_distance' ? 'bg-yellow-700' : colors.badge}`}>
-                                        {entry.type === 'a_distance' ? 'à distance' : 'Présentiele'}
-                                      </span>
+                        <td key={day} className="px-2 py-2 align-top" style={{ minWidth: 150 }}>
+                          <div className="flex flex-col gap-1.5">
+                            {cellEntries.slice(0, 2).map(entry => {
+                              const borderColor = getGroupColor(entry.groupe);
+                              return (
+                                <div key={entry.id} className={`relative pl-3 rounded-md bg-gray-50 dark:bg-gray-700/40 py-1.5 pr-2`}>
+                                  <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-l-md ${borderColor}`} />
+                                  <p className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1 leading-tight truncate">{entry.module}</p>
+                                  {entry.salle && (
+                                    <div className="flex items-center gap-1 mb-0.5">
+                                      <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                      </svg>
+                                      <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{entry.salle}</span>
                                     </div>
+                                  )}
+                                  <div className="flex items-center gap-1 mb-1.5">
+                                    <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{entry.groupe}</span>
                                   </div>
-                                );
-                              })}
-                              {cellEntries.length > 2 && (
-                                <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-medium">
-                                  +{cellEntries.length - 2} autres
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium text-white ${entry.type === 'a_distance' ? 'bg-amber-600' : 'bg-green-600'}`}>
+                                    {entry.type === 'a_distance' ? 'À distance' : 'Présentiel'}
+                                  </span>
                                 </div>
-                              )}
-                            </div>
-                          )}
+                              );
+                            })}
+                            {cellEntries.length > 2 && (
+                              <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-medium">
+                                +{cellEntries.length - 2} autres
+                              </div>
+                            )}
+                          </div>
                         </td>
                       );
                     })}
@@ -291,27 +187,44 @@ const FormateurEmploiPage: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 px-6 py-4">
-          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
-            <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Morning Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
-              10:50 to 11:10 AM
+        <div className="px-6 py-4 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
+              <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Morning Break</span>
+              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                  <path strokeWidth={2} d="M12 6v6l4 2" />
+                </svg>
+                10:50 to 11:10 AM
+              </div>
+            </div>
+            <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
+              <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Evening Break</span>
+              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                  <path strokeWidth={2} d="M12 6v6l4 2" />
+                </svg>
+                15:50 to 16:10 PM
+              </div>
             </div>
           </div>
-          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
-            <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Evening Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
-              15:50 to 16:10 PM
+
+          {/* Group color legend */}
+          {colorMap.size > 0 && (
+            <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wide">Légende des groupes</p>
+              <div className="flex flex-wrap gap-3">
+                {Array.from(colorMap.entries()).map(([groupe, color]) => (
+                  <div key={groupe} className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full flex-shrink-0 ${color}`} />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{groupe}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
