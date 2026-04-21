@@ -143,7 +143,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Directeur + Surveillant — operational writes
-    // (groupes, stagiaires, emploi du temps, examens scheduling, absence consolidation)
+    // (groupes, stagiaires, emploi du temps, absence consolidation)
     Route::middleware('role:directeur,surveillant')->group(function () {
         Route::post  ('/groups',             [GroupController::class, 'store']);
         Route::match (['put','patch'], '/groups/{group}', [GroupController::class, 'update']);
@@ -158,9 +158,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match (['put','patch'], '/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'update']);
         Route::delete('/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'destroy']);
 
+        Route::delete('/examens/{examen}',   [ExamenController::class, 'destroy']);
+    });
+
+    // Directeur + Surveillant + Formateur — examen records
+    // (formateur creates/updates exams for their own modules)
+    Route::middleware('role:directeur,surveillant,formateur')->group(function () {
         Route::post  ('/examens',            [ExamenController::class, 'store']);
         Route::match (['put','patch'], '/examens/{examen}', [ExamenController::class, 'update']);
-        Route::delete('/examens/{examen}',   [ExamenController::class, 'destroy']);
     });
 
     // Directeur + Surveillant + Formateur — absence entries

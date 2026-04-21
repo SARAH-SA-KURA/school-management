@@ -11,6 +11,7 @@ interface Module {
   code: string;
   nom: string;
   heures_total: number;
+  coefficient: number;
   formateurs?: Array<{ user?: { nom: string; prenom: string } }>;
 }
 
@@ -100,7 +101,7 @@ const StagiaireModulesPage: React.FC = () => {
                 <th className={`w-10 px-4 py-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 </th>
-                {['Code Module', 'Nom', 'Vol. Horaire', 'Formateur'].map(col => (
+                {['Code Module', 'Nom', 'Coefficient', 'Vol. Horaire', 'Formateur'].map(col => (
                   <th key={col} className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                     <span className="inline-flex items-center">
                       {col}
@@ -116,13 +117,13 @@ const StagiaireModulesPage: React.FC = () => {
             <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className={`px-4 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <td colSpan={6} className={`px-4 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                     Chargement...
                   </td>
                 </tr>
               ) : filteredModules.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className={`px-4 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <td colSpan={6} className={`px-4 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                     Aucun module trouvé
                   </td>
                 </tr>
@@ -137,6 +138,11 @@ const StagiaireModulesPage: React.FC = () => {
                     </td>
                     <td className={`px-4 py-3.5 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       {mod.nom}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${isDark ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                        ×{mod.coefficient}
+                      </span>
                     </td>
                     <td className={`px-4 py-3.5 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       {mod.heures_total}h
