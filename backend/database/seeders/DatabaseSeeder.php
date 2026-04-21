@@ -364,12 +364,14 @@ class DatabaseSeeder extends Seeder
 
         $jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
         // Index 2 (12:30-14:00) is the lunch break — never scheduled.
+        // Each slot has a fixed start time; duration is randomized among realistic
+        // lengths so the timetable reflects real OFPPT sessions (1h, 1h30, 2h, 2h30).
         $creneaux = [
-            ['08:30', '10:30'],
-            ['10:30', '12:30'],
-            null, // lunch break
-            ['14:00', '16:00'],
-            ['16:00', '18:30'],
+            ['08:30', ['09:30', '10:00', '10:30']],          // 1h, 1h30, 2h
+            ['10:30', ['11:30', '12:00', '12:30']],          // 1h, 1h30, 2h
+            null,                                            // lunch break
+            ['14:00', ['15:00', '15:30', '16:00']],          // 1h, 1h30, 2h
+            ['16:00', ['17:00', '17:30', '18:00', '18:30']], // 1h, 1h30, 2h, 2h30
         ];
         $schedulableIndexes = [0, 1, 3, 4];
 
@@ -398,7 +400,10 @@ class DatabaseSeeder extends Seeder
                 $slotIndexes = collect($daySchedulable)->shuffle()->take($slotsForDay);
 
                 foreach ($slotIndexes as $slotIdx) {
-                    $slot = $creneaux[$slotIdx];
+                    $slotDef = $creneaux[$slotIdx];
+                    // Pick a random end time from the available durations for this slot
+                    $possibleEnds = $slotDef[1];
+                    $slot = [$slotDef[0], $possibleEnds[array_rand($possibleEnds)]];
 
                     // Skip if this group is already booked at this slot (shouldn't happen but defensive)
                     if (in_array($group->id, $slotBookings[$jour][$slotIdx]['groups'], true)) continue;
@@ -451,13 +456,14 @@ class DatabaseSeeder extends Seeder
 
         foreach ($allGroups as $group) {
             $filiereModules = $allModules->where('filiere_id', $group->filiere_id)->values();
-            $examModules = $filiereModules->random(min(3, $filiereModules->count()));
-
-            foreach ($examModules as $module) {
+            // Exams are scheduled for EVERY module in the filière (not a random subset).
+            // This matches reality — each module gets its own CCs + EFM — and ensures the
+            // Notes tab has meaningful coverage for any group/module the user picks.
+            foreach ($filiereModules as $module) {
                 $formateur = $module->formateurs->first();
                 if (!$formateur) continue;
 
-                // 3 controle exams (CC1, CC2, CC3)
+                // 3 controle exams (CC1, CC2, CC3) with explicit numero
                 foreach ($ccDates as $i => $date) {
                     $allExamens->push(Examen::create([
                         'module_id'      => $module->id,
@@ -466,6 +472,7 @@ class DatabaseSeeder extends Seeder
                         'formateur_id'   => $formateur->id,
                         'surveillant_id' => $survUser->id,
                         'type'           => 'controle',
+                        'numero'         => $i + 1,
                         'date_examen'    => $date,
                         'heure_debut'    => $ccTimes[$i][0],
                         'heure_fin'      => $ccTimes[$i][1],

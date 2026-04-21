@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useNotifications, AppNotification } from '../../hooks/useNotifications';
 import { useTheme } from '../../contexts/ThemeContext';
 import { HiBell, HiChevronDown, HiLogout, HiCog, HiUser, HiSearch, HiSun, HiMoon } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -28,11 +29,24 @@ const SEARCH_PAGES: { label: string; keywords: string[]; slug: string; adminOnly
   { label: 'Paramètres', keywords: ['parametre', 'paramètre', 'setting', 'config'], slug: 'parametres' },
 ];
 
-const NOTIFICATIONS = [
-  { id: 1, message: 'Formateur Omar Lhmidi n\'est pas présent au cours Dev 101', time: 'Il y a 5 min', unread: true },
-  { id: 2, message: 'Stagiaire Ahmed Tazi a déposé une justification d\'absence', time: 'Il y a 30 min', unread: true },
-  { id: 3, message: 'Examen de Base de Données programmé pour demain - Salle A2', time: 'Il y a 1h', unread: false },
-];
+// Lightweight "il y a N min/h/j" formatter (French)
+const timeAgo = (iso?: string | null): string => {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) return 'à l\u2019instant';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH} h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 30) return `il y a ${diffD} j`;
+  const diffMo = Math.floor(diffD / 30);
+  if (diffMo < 12) return `il y a ${diffMo} mois`;
+  const diffY = Math.floor(diffMo / 12);
+  return `il y a ${diffY} an${diffY > 1 ? 's' : ''}`;
+};
 
 const getRolePrefix = (role?: string) => {
   switch (role) {
@@ -69,6 +83,7 @@ const AvatarCircle: React.FC<{ user: any }> = ({ user }) => {
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -199,26 +214,72 @@ const Header: React.FC = () => {
             <button
               onClick={() => setNotifOpen(!notifOpen)}
               className={`relative ${iconBtn}`}
+              aria-label="Notifications"
             >
               <HiBell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-danger-500 rounded-full" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-danger-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white dark:ring-gray-900">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </button>
             {notifOpen && (
               <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
+                  {unreadCount > 0 && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{unreadCount} non lue{unreadCount > 1 ? 's' : ''}</span>
+                  )}
                 </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {NOTIFICATIONS.map(notif => (
-                    <div key={notif.id} className={`px-4 py-3 border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer ${notif.unread ? 'bg-blue-50/30 dark:bg-primary-900/20' : ''}`}>
-                      <p className="text-sm text-gray-700 dark:text-gray-200">{notif.message}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{notif.time}</p>
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                      Aucune notification
                     </div>
-                  ))}
+                  ) : (
+                    notifications.map((notif: AppNotification) => {
+                      const unread = !notif.read_at;
+                      const handleClick = async () => {
+                        if (unread) await markRead(notif.id);
+                        if (notif.action_url) {
+                          navigate(notif.action_url);
+                          setNotifOpen(false);
+                        }
+                      };
+                      return (
+                        <button
+                          type="button"
+                          key={notif.id}
+                          onClick={handleClick}
+                          className={`w-full text-left px-4 py-3 border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors ${unread ? 'bg-blue-50/30 dark:bg-primary-900/20' : ''}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {unread && (
+                              <span className="mt-1.5 h-2 w-2 rounded-full bg-primary-500 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{notif.title}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-200 mt-0.5">{notif.message}</p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{timeAgo(notif.created_at)}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
-                <div className="px-4 py-2 text-center">
-                  <button className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 font-medium">Voir tout</button>
-                </div>
+                {notifications.length > 0 && (
+                  <div className="px-4 py-2 text-center border-t border-gray-100 dark:border-gray-700">
+                    <button
+                      type="button"
+                      onClick={() => markAllRead()}
+                      disabled={unreadCount === 0}
+                      className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Tout marquer lu
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

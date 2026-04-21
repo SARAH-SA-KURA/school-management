@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\{
     NoteController,
     AbsenceController,
     EmploiDuTempsController,
+    NotificationController,
     UserController,
 };
 
@@ -35,6 +36,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/profile', [AuthController::class, 'updateProfile']);
     Route::post('/auth/password', [AuthController::class, 'changePassword']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
+
+    // ── Notifications (self-scoped, any authenticated user) ──
+    Route::get ('/notifications',                     [NotificationController::class, 'index']);
+    Route::get ('/notifications/unread-count',        [NotificationController::class, 'unreadCount']);
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all',            [NotificationController::class, 'markAllAsRead']);
 
     // ── Self-scoped endpoints ──
     Route::middleware('role:formateur')->group(function () {
@@ -97,6 +104,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/grades',                            [NoteController::class, 'grades']);
 
         Route::get('/absences',                          [AbsenceController::class, 'index']);
+        Route::get('/absences/stats',                    [AbsenceController::class, 'stats']);
+        Route::get('/absences/warnings',                 [AbsenceController::class, 'warnings']);
     });
 
     // Users list — Directeur only
@@ -141,6 +150,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/groups/{group}',     [GroupController::class, 'destroy']);
 
         Route::post  ('/stagiaires',         [StagiaireController::class, 'store']);
+        Route::post  ('/stagiaires/bulk',    [StagiaireController::class, 'bulkStore']);
         Route::match (['put','patch'], '/stagiaires/{stagiaire}', [StagiaireController::class, 'update']);
         Route::delete('/stagiaires/{stagiaire}', [StagiaireController::class, 'destroy']);
 
@@ -157,6 +167,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // (formateur per-session; surveillant/directeur consolidate + justify)
     Route::middleware('role:directeur,surveillant,formateur')->group(function () {
         Route::post  ('/absences',           [AbsenceController::class, 'store']);
+        Route::post  ('/absences/{absence}/justify', [AbsenceController::class, 'justify']);
         Route::match (['put','patch'], '/absences/{absence}', [AbsenceController::class, 'update']);
         Route::delete('/absences/{absence}', [AbsenceController::class, 'destroy']);
     });

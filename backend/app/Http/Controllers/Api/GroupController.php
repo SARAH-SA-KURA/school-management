@@ -63,6 +63,16 @@ class GroupController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        if (array_key_exists('max_stagiaires', $validated)) {
+            $currentCount = $group->stagiaires()->count();
+            if ($validated['max_stagiaires'] < $currentCount) {
+                return $this->error(
+                    "Impossible de réduire l'effectif maximum à {$validated['max_stagiaires']} : le groupe contient déjà {$currentCount} stagiaire(s).",
+                    422
+                );
+            }
+        }
+
         $group->update($validated);
         $group->load('filiere');
 

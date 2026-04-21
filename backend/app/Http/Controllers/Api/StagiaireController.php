@@ -3,15 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Group;
 use App\Models\Stagiaire;
 use App\Models\User;
 use App\Models\Note;
 use App\Models\Absence;
 use App\Models\EmploiDuTemps;
+use App\Services\NotificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class StagiaireController extends Controller
 {
@@ -42,7 +45,21 @@ class StagiaireController extends Controller
             $query->where('status', $request->status);
         }
 
-        $query->orderBy($request->input('sort_by', 'created_at'), $request->input('sort_dir', 'desc'));
+        $sortBy  = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc');
+
+        // Fields that live on the related `users` table need a join.
+        if (in_array($sortBy, ['nom', 'prenom', 'email', 'telephone'], true)) {
+            $query->join('users', 'users.id', '=', 'stagiaires.user_id')
+                  ->orderBy("users.{$sortBy}", $sortDir)
+                  ->select('stagiaires.*');
+        } elseif ($sortBy === 'group' || $sortBy === 'groupe') {
+            $query->leftJoin('groups', 'groups.id', '=', 'stagiaires.group_id')
+                  ->orderBy('groups.nom', $sortDir)
+                  ->select('stagiaires.*');
+        } else {
+            $query->orderBy($sortBy, $sortDir);
+        }
 
         return $this->paginated($query, $request);
     }
@@ -63,6 +80,15 @@ class StagiaireController extends Controller
             'date_naissance' => 'required|date',
             'adresse' => 'nullable|string',
         ]);
+
+        // Capacity guard
+        $group = Group::withCount('stagiaires')->findOrFail($validated['group_id']);
+        if ($group->stagiaires_count >= $group->max_stagiaires) {
+            return $this->error(
+                "Le groupe « {$group->nom} » est complet ({$group->stagiaires_count}/{$group->max_stagiaires}).",
+                422
+            );
+        }
 
         $stagiaire = DB::transaction(function () use ($validated) {
             $user = User::create([
@@ -88,6 +114,21 @@ class StagiaireController extends Controller
 
         $stagiaire->load(['user', 'group.filiere']);
 
+        // Welcome notification (post-transaction)
+        try {
+            $groupNom = $stagiaire->group->nom ?? '';
+            NotificationService::dispatch(
+                $stagiaire->user_id,
+                'stagiaire_welcome',
+                'Bienvenue à MaCompus',
+                "Votre compte stagiaire a été créé. Vous êtes inscrit(e) au groupe « {$groupNom} ».",
+                '/stagiaire/dashboard',
+                ['stagiaire_id' => $stagiaire->id]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('notification dispatch failed', ['error' => $e->getMessage()]);
+        }
+
         return $this->success($stagiaire, 'Stagiaire créé avec succès', 201);
     }
 
@@ -103,6 +144,7 @@ class StagiaireController extends Controller
             'nom' => 'sometimes|string|max:255',
             'prenom' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:users,email,' . $stagiaire->user_id,
+            'password' => 'nullable|string|min:8',
             'telephone' => 'nullable|string',
             'cef' => 'sometimes|string|unique:stagiaires,cef,' . $stagiaire->id,
             'cne' => 'sometimes|string|unique:stagiaires,cne,' . $stagiaire->id,
@@ -114,8 +156,27 @@ class StagiaireController extends Controller
             'status' => 'sometimes|in:actif,abandon,diplome,suspendu',
         ]);
 
+        // Detect group change BEFORE updating
+        $oldGroupId = $stagiaire->group_id;
+        $newGroupId = $validated['group_id'] ?? null;
+        $groupChanged = $newGroupId !== null && (int) $newGroupId !== (int) $oldGroupId;
+
+        // Capacity guard on target group (only when changing)
+        if ($groupChanged) {
+            $target = Group::withCount('stagiaires')->findOrFail($newGroupId);
+            if ($target->stagiaires_count >= $target->max_stagiaires) {
+                return $this->error(
+                    "Le groupe « {$target->nom} » est complet ({$target->stagiaires_count}/{$target->max_stagiaires}).",
+                    422
+                );
+            }
+        }
+
         DB::transaction(function () use ($validated, $stagiaire) {
             $userFields = array_intersect_key($validated, array_flip(['nom', 'prenom', 'email', 'telephone']));
+            if (!empty($validated['password'])) {
+                $userFields['password'] = Hash::make($validated['password']);
+            }
             if (!empty($userFields)) {
                 $stagiaire->user->update($userFields);
             }
@@ -128,7 +189,160 @@ class StagiaireController extends Controller
 
         $stagiaire->load(['user', 'group.filiere']);
 
+        // Notify on group change (post-transaction)
+        if ($groupChanged) {
+            try {
+                $newGroupNom = $stagiaire->group->nom ?? '';
+                NotificationService::dispatch(
+                    $stagiaire->user_id,
+                    'group_changed',
+                    'Changement de groupe',
+                    "Vous avez été affecté(e) au groupe « {$newGroupNom} ».",
+                    '/stagiaire/dashboard',
+                    ['group_id' => $stagiaire->group_id]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('notification dispatch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
         return $this->success($stagiaire, 'Stagiaire mis à jour');
+    }
+
+    public function bulkStore(Request $request)
+    {
+        $validated = $request->validate([
+            'group_id'                 => 'required|exists:groups,id',
+            'stagiaires'               => 'required|array|min:1',
+            'stagiaires.*.nom'         => 'required|string|max:255',
+            'stagiaires.*.prenom'      => 'required|string|max:255',
+            'stagiaires.*.email'       => 'required|email',
+            'stagiaires.*.password'    => 'required|string|min:8',
+            'stagiaires.*.cef'         => 'required|string',
+            'stagiaires.*.cne'         => 'required|string',
+            'stagiaires.*.cin'         => 'required|string',
+            'stagiaires.*.date_naissance' => 'required|date',
+            'stagiaires.*.telephone'   => 'nullable|string',
+            'stagiaires.*.adresse'     => 'nullable|string',
+        ]);
+
+        // Capacity guard
+        $group = Group::withCount('stagiaires')->findOrFail($validated['group_id']);
+        $remaining = $group->max_stagiaires - $group->stagiaires_count;
+        if ($remaining <= 0) {
+            return $this->error(
+                "Le groupe « {$group->nom} » est complet ({$group->stagiaires_count}/{$group->max_stagiaires}). Import annulé.",
+                422
+            );
+        }
+
+        $created = [];
+        $skipped = [];
+
+        $existingEmails = User::pluck('email')->map(fn ($e) => mb_strtolower(trim($e)))->all();
+        $existingCef = Stagiaire::pluck('cef')->map(fn ($c) => mb_strtolower(trim($c)))->all();
+        $existingCne = Stagiaire::pluck('cne')->map(fn ($c) => mb_strtolower(trim($c)))->all();
+        $existingCin = Stagiaire::pluck('cin')->map(fn ($c) => mb_strtolower(trim($c)))->all();
+
+        $seenEmails = [];
+        $seenCef = [];
+        $seenCne = [];
+        $seenCin = [];
+
+        DB::transaction(function () use ($validated, &$created, &$skipped, &$existingEmails, &$existingCef, &$existingCne, &$existingCin, &$seenEmails, &$seenCef, &$seenCne, &$seenCin, $remaining, $group) {
+            $admitted = 0;
+            foreach ($validated['stagiaires'] as $row) {
+                // Capacity check — stop admitting once the group hits its limit.
+                if ($admitted >= $remaining) {
+                    $skipped[] = [
+                        'nom' => "{$row['prenom']} {$row['nom']}",
+                        'reason' => "capacité du groupe atteinte ({$group->max_stagiaires})",
+                    ];
+                    continue;
+                }
+
+                $emailKey = mb_strtolower(trim($row['email']));
+                $cefKey   = mb_strtolower(trim($row['cef']));
+                $cneKey   = mb_strtolower(trim($row['cne']));
+                $cinKey   = mb_strtolower(trim($row['cin']));
+
+                if (in_array($emailKey, $seenEmails, true) || in_array($emailKey, $existingEmails, true)) {
+                    $skipped[] = ['nom' => "{$row['prenom']} {$row['nom']}", 'reason' => 'email déjà pris'];
+                    continue;
+                }
+                if (in_array($cefKey, $seenCef, true) || in_array($cefKey, $existingCef, true)) {
+                    $skipped[] = ['nom' => "{$row['prenom']} {$row['nom']}", 'reason' => 'CEF déjà pris'];
+                    continue;
+                }
+                if (in_array($cneKey, $seenCne, true) || in_array($cneKey, $existingCne, true)) {
+                    $skipped[] = ['nom' => "{$row['prenom']} {$row['nom']}", 'reason' => 'CNE déjà pris'];
+                    continue;
+                }
+                if (in_array($cinKey, $seenCin, true) || in_array($cinKey, $existingCin, true)) {
+                    $skipped[] = ['nom' => "{$row['prenom']} {$row['nom']}", 'reason' => 'CIN déjà pris'];
+                    continue;
+                }
+
+                $user = User::create([
+                    'nom'       => $row['nom'],
+                    'prenom'    => $row['prenom'],
+                    'email'     => $row['email'],
+                    'password'  => Hash::make($row['password']),
+                    'telephone' => $row['telephone'] ?? null,
+                    'role'      => 'stagiaire',
+                ]);
+
+                $stagiaire = Stagiaire::create([
+                    'user_id'          => $user->id,
+                    'cef'              => $row['cef'],
+                    'cne'              => $row['cne'],
+                    'cin'              => $row['cin'],
+                    'group_id'         => $validated['group_id'],
+                    'date_inscription' => now()->format('Y-m-d'),
+                    'date_naissance'   => $row['date_naissance'],
+                    'adresse'          => $row['adresse'] ?? null,
+                ]);
+
+                $created[] = $stagiaire->id;
+                $admitted++;
+                $seenEmails[] = $emailKey;
+                $seenCef[] = $cefKey;
+                $seenCne[] = $cneKey;
+                $seenCin[] = $cinKey;
+            }
+        });
+
+        $msg = count($created) . ' stagiaire(s) importé(s)';
+        if (count($skipped) > 0) $msg .= ', ' . count($skipped) . ' ignoré(s) (doublons)';
+
+        // Welcome notifications for newly bulk-imported stagiaires (post-transaction)
+        if (count($created) > 0) {
+            try {
+                $newStagiaires = Stagiaire::with(['user', 'group'])
+                    ->whereIn('id', $created)
+                    ->get();
+                foreach ($newStagiaires as $stag) {
+                    if (!$stag->user_id) continue;
+                    $groupNom = $stag->group->nom ?? '';
+                    NotificationService::dispatch(
+                        $stag->user_id,
+                        'stagiaire_welcome',
+                        'Bienvenue à MaCompus',
+                        "Votre compte stagiaire a été créé. Vous êtes inscrit(e) au groupe « {$groupNom} ».",
+                        '/stagiaire/dashboard',
+                        ['stagiaire_id' => $stag->id]
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning('notification dispatch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $this->success(
+            ['created' => count($created), 'skipped' => $skipped],
+            $msg,
+            201
+        );
     }
 
     public function destroy(Stagiaire $stagiaire)

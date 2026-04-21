@@ -38,11 +38,25 @@ export const modulesApi = {
 };
 export const sallesApi = createCrudApi<Salle>('/salles');
 export const formateursApi = createCrudApi<Formateur>('/formateurs');
-export const stagiairesApi = createCrudApi<Stagiaire>('/stagiaires');
+export const stagiairesApi = {
+  ...createCrudApi<Stagiaire>('/stagiaires'),
+  bulkImport: (group_id: number, stagiaires: Array<any>) =>
+    axiosInstance.post('/stagiaires/bulk', { group_id, stagiaires }),
+};
 export const examensApi = createCrudApi<Examen>('/examens');
 export const usersApi = createCrudApi<User>('/users');
 export const emploiDuTempsApi = createCrudApi<EmploiDuTemps>('/emploi-du-temps');
-export const absencesApi = createCrudApi<Absence>('/absences');
+export const absencesApi = {
+  ...createCrudApi<Absence>('/absences'),
+  justify: (id: number, file: File, note?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (note) fd.append('note', note);
+    return axiosInstance.post(`/absences/${id}/justify`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
 
 // Special endpoints
 export const notesApi = {
@@ -65,4 +79,12 @@ export const dropdownApi = {
   groups: (params?: { filiere_id?: number }) => axiosInstance.get('/groups-all', { params }),
   salles: () => axiosInstance.get('/salles-all'),
   formateurs: () => axiosInstance.get('/formateurs-all'),
+};
+
+// Notifications (self-scoped to the authenticated user)
+export const notificationsApi = {
+  list: () => axiosInstance.get('/notifications'),
+  unreadCount: () => axiosInstance.get<{ data: { count: number } }>('/notifications/unread-count'),
+  markRead: (id: number) => axiosInstance.post(`/notifications/${id}/read`),
+  markAllRead: () => axiosInstance.post('/notifications/read-all'),
 };

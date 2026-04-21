@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\{Note, Examen, Stagiaire};
+use App\Services\NotificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class NoteController extends Controller
 {
@@ -47,6 +49,33 @@ class NoteController extends Controller
                     'remarque' => $noteData['remarque'] ?? null,
                 ]
             );
+        }
+
+        // Dispatch grade_published notifications (one per note / stagiaire)
+        try {
+            $stagiaireIds = collect($created)->pluck('stagiaire_id')->unique()->values()->all();
+            $examenIds    = collect($created)->pluck('examen_id')->unique()->values()->all();
+
+            $stagiaires = Stagiaire::whereIn('id', $stagiaireIds)->get()->keyBy('id');
+            $examens    = Examen::with('module')->whereIn('id', $examenIds)->get()->keyBy('id');
+
+            foreach ($created as $note) {
+                $stag   = $stagiaires->get($note->stagiaire_id);
+                $examen = $examens->get($note->examen_id);
+                if (!$stag || !$stag->user_id || !$examen) continue;
+
+                $moduleNom = $examen->module->nom ?? 'N/A';
+                NotificationService::dispatch(
+                    $stag->user_id,
+                    'grade_published',
+                    'Note publiée',
+                    "Une note a été publiée pour vous en module « {$moduleNom} » ({$note->note}/20).",
+                    '/stagiaire/examens',
+                    ['note_id' => $note->id, 'examen_id' => $note->examen_id]
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('notification dispatch failed', ['error' => $e->getMessage()]);
         }
 
         return $this->success($created, 'Notes enregistrées avec succès');

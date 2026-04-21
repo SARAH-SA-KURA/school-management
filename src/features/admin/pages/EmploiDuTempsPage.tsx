@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { dropdownApi, emploiDuTempsApi } from '../../../api/crudApi';
+import { dropdownApi, emploiDuTempsApi, modulesApi } from '../../../api/crudApi';
 import { useRolePath } from '../../../hooks/useRolePath';
-import { Modal } from '../../../components/ui';
-import { HiX } from 'react-icons/hi';
+import { useAuth } from '../../../hooks/useAuth';
+import { Modal, Button, Input, Select, ConfirmDialog } from '../../../components/ui';
+import type { SelectOption } from '../../../types';
+import { HiX, HiPlus, HiPencil, HiTrash, HiDownload } from 'react-icons/hi';
+import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 interface ScheduleEntry {
   id: number;
   module: string;
   salle: string;
+  salleId: number | null;
   formateur: string;
   formateurId: number;
   groupe: string;
@@ -97,18 +102,48 @@ const transformForWeek = (baseEntries: ScheduleEntry[], weekId: string): Schedul
     });
 };
 
+interface SessionFormState {
+  jour: string;
+  heure_debut: string;
+  heure_fin: string;
+  group_id: string;
+  module_id: string;
+  formateur_id: string;
+  salle_id: string;
+}
+
+const emptySessionForm: SessionFormState = {
+  jour: 'lundi',
+  heure_debut: '08:30',
+  heure_fin: '10:30',
+  group_id: '',
+  module_id: '',
+  formateur_id: '',
+  salle_id: '',
+};
+
 const EmploiDuTempsPage: React.FC = () => {
   const basePath = useRolePath();
+  const { user } = useAuth();
+  const canWrite = user?.role === 'surveillant';
   const [formateur, setFormateur] = useState('');
   const [filiere, setFiliere] = useState('');
   const [groupe, setGroupe] = useState('');
   const [semaine, setSemaine] = useState('mar');
   const [filieres, setFilieres] = useState<any[]>([]);
   const [groupes, setGroupes] = useState<any[]>([]);
+  const [allSalles, setAllSalles] = useState<any[]>([]);
+  const [allFormateurs, setAllFormateurs] = useState<any[]>([]);
   const [entries, setEntries] = useState<ScheduleEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<ScheduleEntry | null>(null);
   const [cellDetail, setCellDetail] = useState<{ day: string; slotIdx: number; entries: ScheduleEntry[] } | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<SessionFormState>(emptySessionForm);
+  const [saving, setSaving] = useState(false);
+  const [formModules, setFormModules] = useState<any[]>([]);
 
   useEffect(() => {
     dropdownApi.filieres().then(res => {
@@ -121,6 +156,21 @@ const EmploiDuTempsPage: React.FC = () => {
       if (Array.isArray(data)) setGroupes(data);
     }).catch(() => {});
 
+    dropdownApi.salles().then(res => {
+      const data = res.data?.data || res.data;
+      if (Array.isArray(data)) setAllSalles(data);
+    }).catch(() => {});
+
+    dropdownApi.formateurs().then(res => {
+      const data = res.data?.data || res.data;
+      if (Array.isArray(data)) setAllFormateurs(data);
+    }).catch(() => {});
+
+    fetchEntries();
+  }, []);
+
+  const fetchEntries = () => {
+    setLoading(true);
     emploiDuTempsApi.getAll().then(res => {
       const data = res.data?.data;
       if (Array.isArray(data)) {
@@ -128,6 +178,7 @@ const EmploiDuTempsPage: React.FC = () => {
           id: item.id,
           module: item.module?.nom || '',
           salle: item.salle?.nom || '',
+          salleId: item.salle_id ?? item.salle?.id ?? null,
           formateur: item.formateur?.user
             ? `${item.formateur.user.prenom} ${item.formateur.user.nom}`
             : '',
@@ -145,7 +196,7 @@ const EmploiDuTempsPage: React.FC = () => {
       }
     }).catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
 
   const weekEntries = useMemo(() => transformForWeek(entries, semaine), [entries, semaine]);
 
@@ -206,6 +257,221 @@ const EmploiDuTempsPage: React.FC = () => {
 
   const clearFilters = () => { setFormateur(''); setFiliere(''); setGroupe(''); };
 
+  const handleExport = () => {
+    if (filteredEntries.length === 0) {
+      toast.error('Aucune séance à exporter');
+      return;
+    }
+    const dayOrder: Record<string, number> = { lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
+    const rows = [...filteredEntries]
+      .sort((a, b) => {
+        const da = dayOrder[a.jour.toLowerCase()] ?? 99;
+        const db = dayOrder[b.jour.toLowerCase()] ?? 99;
+        if (da !== db) return da - db;
+        return (a.heureDebut || '').localeCompare(b.heureDebut || '');
+      })
+      .map((e, i) => ({
+        '#': i + 1,
+        'Jour': e.jour.charAt(0).toUpperCase() + e.jour.slice(1),
+        'Heure début': (e.heureDebut || '').slice(0, 5),
+        'Heure fin':   (e.heureFin || '').slice(0, 5),
+        'Module':    e.module || '',
+        'Groupe':    e.groupe || '',
+        'Formateur': e.formateur || '',
+        'Salle':     e.type === 'a_distance' ? 'À distance' : (e.salle || ''),
+        'Type':      e.type === 'a_distance' ? 'À distance' : 'Présentiel',
+      }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 5 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 28 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Emploi');
+
+    const weekLabel = WEEKS.find(w => w.id === semaine)?.label?.replace(/\s+/g, '_') || semaine;
+    const scopeBits: string[] = [];
+    if (formateur) {
+      const f = formateursList.find(x => x.id === Number(formateur));
+      if (f) scopeBits.push(f.nom.replace(/\s+/g, '_'));
+    }
+    if (filiere) {
+      const f = filieres.find((x: any) => String(x.id) === filiere);
+      if (f) scopeBits.push(f.nom.replace(/\s+/g, '_'));
+    }
+    if (groupe) {
+      const g = groupes.find((x: any) => String(x.id) === groupe);
+      if (g) scopeBits.push(g.nom.replace(/\s+/g, '_'));
+    }
+    const scope = scopeBits.length > 0 ? `_${scopeBits.join('_')}` : '';
+    XLSX.writeFile(wb, `Emploi_${weekLabel}${scope}.xlsx`);
+    toast.success(`${rows.length} séance(s) exportée(s)`);
+  };
+
+  // ── CRUD: load modules for the selected group when form opens
+  useEffect(() => {
+    if (!canWrite || !formOpen || !form.group_id) { setFormModules([]); return; }
+    const g = groupes.find((x: any) => String(x.id) === form.group_id);
+    if (!g?.filiere_id) return;
+    modulesApi.getAll({ filiere_id: g.filiere_id, per_page: 200 })
+      .then(r => setFormModules(r.data?.data || []))
+      .catch(() => setFormModules([]));
+  }, [canWrite, formOpen, form.group_id, groupes]);
+
+  const openCreateSession = () => {
+    setEditingId(null);
+    setForm(emptySessionForm);
+    setFormOpen(true);
+  };
+
+  const openEditSession = (entry: ScheduleEntry) => {
+    setEditingId(entry.id);
+    setForm({
+      jour:         entry.jour || 'lundi',
+      heure_debut:  (entry.heureDebut || '').slice(0, 5),
+      heure_fin:    (entry.heureFin || '').slice(0, 5),
+      group_id:     String(entry.groupId || ''),
+      module_id:    '',
+      formateur_id: String(entry.formateurId || ''),
+      salle_id:     '',
+    });
+    // resolve module_id + salle_id from the raw API data on next tick
+    emploiDuTempsApi.getById(entry.id)
+      .then(r => {
+        const item: any = r.data?.data || {};
+        setForm(p => ({
+          ...p,
+          module_id: String(item.module_id || item.module?.id || ''),
+          salle_id:  String(item.salle_id || item.salle?.id || ''),
+        }));
+      })
+      .catch(() => {});
+    setFormOpen(true);
+    setDetail(null);
+  };
+
+  const handleSaveSession = async () => {
+    if (!form.jour || !form.heure_debut || !form.heure_fin || !form.group_id || !form.module_id || !form.formateur_id || !form.salle_id) {
+      toast.error('Tous les champs sont requis');
+      return;
+    }
+    if (form.heure_debut >= form.heure_fin) {
+      toast.error('L\'heure de fin doit être après l\'heure de début');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload: any = {
+        jour:         form.jour,
+        heure_debut:  form.heure_debut,
+        heure_fin:    form.heure_fin,
+        group_id:     Number(form.group_id),
+        module_id:    Number(form.module_id),
+        formateur_id: Number(form.formateur_id),
+        salle_id:     Number(form.salle_id),
+      };
+      if (editingId) {
+        await emploiDuTempsApi.update(editingId, payload);
+        toast.success('Séance mise à jour');
+      } else {
+        await emploiDuTempsApi.create(payload);
+        toast.success('Séance ajoutée');
+      }
+      setFormOpen(false);
+      fetchEntries();
+    } catch (err: any) {
+      const errors = err.response?.data?.errors;
+      const firstErr = errors ? Object.values(errors).flat()[0] : null;
+      toast.error((firstErr as string) || err.response?.data?.message || 'Erreur');
+    }
+    setSaving(false);
+  };
+
+  const askDeleteSession = (entry: ScheduleEntry) => {
+    setEditingId(entry.id);
+    setDetail(null);
+    setDeleteOpen(true);
+  };
+
+  const handleDeleteSession = async () => {
+    if (!editingId) return;
+    try {
+      await emploiDuTempsApi.delete(editingId);
+      toast.success('Séance supprimée');
+      setDeleteOpen(false);
+      setEditingId(null);
+      fetchEntries();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erreur');
+    }
+  };
+
+  const formGroupOptions: SelectOption[] = groupes.map((g: any) => ({
+    value: String(g.id),
+    label: g.filiere?.nom ? `${g.nom} — ${g.filiere.nom}` : g.nom,
+  }));
+  const formModuleOptions: SelectOption[] = formModules.map((m: any) => ({ value: String(m.id), label: m.nom }));
+
+  // Formateurs for this form:
+  // 1) must be assigned to the selected module (via formateurs pivot)
+  // 2) must be free at the selected day + time (no overlapping session)
+  // Fallback to all formateurs when no module picked yet.
+  const overlapsSlot = (eHd: string, eHf: string): boolean => {
+    if (!form.heure_debut || !form.heure_fin) return false;
+    return eHd < form.heure_fin && eHf > form.heure_debut;
+  };
+
+  const selectedModule = useMemo(
+    () => formModules.find((m: any) => String(m.id) === form.module_id),
+    [formModules, form.module_id]
+  );
+
+  const formFormateurOptions: SelectOption[] = useMemo(() => {
+    // Candidates: those assigned to the module if we know it; otherwise all
+    const moduleFormateurIds: Set<number> | null = selectedModule?.formateurs
+      ? new Set(selectedModule.formateurs.map((f: any) => f.id))
+      : null;
+
+    const busyFormateurIds = new Set(
+      entries
+        .filter(e =>
+          e.id !== editingId &&
+          e.jour.toLowerCase() === form.jour.toLowerCase() &&
+          overlapsSlot((e.heureDebut || '').slice(0, 5), (e.heureFin || '').slice(0, 5))
+        )
+        .map(e => e.formateurId)
+    );
+
+    return allFormateurs
+      .filter((f: any) => !moduleFormateurIds || moduleFormateurIds.has(f.id))
+      .filter((f: any) => !busyFormateurIds.has(f.id))
+      .map((f: any) => ({
+        value: String(f.id),
+        label: `${f.user?.prenom || ''} ${f.user?.nom || ''}`.trim() || `#${f.id}`,
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allFormateurs, selectedModule, entries, editingId, form.jour, form.heure_debut, form.heure_fin]);
+
+  const formSalleOptions: SelectOption[] = useMemo(() => {
+    const busySalleIds = new Set(
+      entries
+        .filter(e =>
+          e.id !== editingId &&
+          e.jour.toLowerCase() === form.jour.toLowerCase() &&
+          overlapsSlot((e.heureDebut || '').slice(0, 5), (e.heureFin || '').slice(0, 5))
+        )
+        .map(e => e.salleId)
+        .filter((id): id is number => id !== null)
+    );
+
+    return allSalles
+      .filter((s: any) => !busySalleIds.has(s.id))
+      .map((s: any) => ({ value: String(s.id), label: s.nom }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSalles, entries, editingId, form.jour, form.heure_debut, form.heure_fin]);
+  const JOUR_OPTIONS: SelectOption[] = [
+    { value: 'lundi', label: 'Lundi' }, { value: 'mardi', label: 'Mardi' },
+    { value: 'mercredi', label: 'Mercredi' }, { value: 'jeudi', label: 'Jeudi' },
+    { value: 'vendredi', label: 'Vendredi' }, { value: 'samedi', label: 'Samedi' },
+  ];
+
   return (
     <div>
       <div className="flex items-start justify-between mb-6">
@@ -218,6 +484,23 @@ const EmploiDuTempsPage: React.FC = () => {
             {' / '}
             <span>Emploi du temps</span>
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={filteredEntries.length === 0}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <HiDownload className="h-4 w-4" /> Export Excel
+          </button>
+          {canWrite && (
+            <button
+              onClick={openCreateSession}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <HiPlus className="h-4 w-4" /> Ajouter séance
+            </button>
+          )}
         </div>
       </div>
 
@@ -426,6 +709,16 @@ const EmploiDuTempsPage: React.FC = () => {
         onClose={() => setDetail(null)}
         title="Détails de la séance"
         size="md"
+        footer={canWrite && detail ? (
+          <>
+            <Button variant="secondary" onClick={() => askDeleteSession(detail)} className="!bg-red-50 !text-red-600 hover:!bg-red-100 dark:!bg-red-900/20 dark:!text-red-400">
+              <HiTrash className="h-4 w-4" /> Supprimer
+            </Button>
+            <Button onClick={() => openEditSession(detail)}>
+              <HiPencil className="h-4 w-4" /> Modifier
+            </Button>
+          </>
+        ) : undefined}
       >
         {detail && (
           <div className="space-y-4">
@@ -508,6 +801,93 @@ const EmploiDuTempsPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Create / Edit session modal */}
+      <Modal
+        isOpen={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editingId ? 'Modifier la séance' : 'Ajouter une séance'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Annuler</Button>
+            <Button onClick={handleSaveSession} loading={saving}>Enregistrer</Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-3 gap-4">
+            <Select
+              label="Jour"
+              value={form.jour}
+              onChange={e => setForm(p => ({ ...p, jour: e.target.value }))}
+              options={JOUR_OPTIONS}
+              required
+            />
+            <Input label="Heure début" type="time" value={form.heure_debut} onChange={e => setForm(p => ({ ...p, heure_debut: e.target.value }))} required />
+            <Input label="Heure fin" type="time" value={form.heure_fin} onChange={e => setForm(p => ({ ...p, heure_fin: e.target.value }))} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Groupe"
+              value={form.group_id}
+              onChange={e => setForm(p => ({ ...p, group_id: e.target.value, module_id: '' }))}
+              options={[{ value: '', label: 'Choisir un groupe' }, ...formGroupOptions]}
+              required
+            />
+            <Select
+              label="Module"
+              value={form.module_id}
+              onChange={e => setForm(p => ({ ...p, module_id: e.target.value }))}
+              options={[{ value: '', label: form.group_id ? 'Choisir un module' : 'Choisir un groupe d\'abord' }, ...formModuleOptions]}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Select
+                label="Formateur"
+                value={form.formateur_id}
+                onChange={e => setForm(p => ({ ...p, formateur_id: e.target.value }))}
+                options={[{ value: '', label: 'Choisir un formateur' }, ...formFormateurOptions]}
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {form.module_id
+                  ? (formFormateurOptions.length === 0
+                      ? <span className="text-red-600 dark:text-red-400">Aucun formateur disponible (vérifiez le créneau ou les affectations du module)</span>
+                      : `${formFormateurOptions.length} formateur(s) disponible(s) pour ce module à ce créneau`)
+                  : 'Choisissez un module pour filtrer les formateurs'}
+              </p>
+            </div>
+            <div>
+              <Select
+                label="Salle"
+                value={form.salle_id}
+                onChange={e => setForm(p => ({ ...p, salle_id: e.target.value }))}
+                options={[{ value: '', label: 'Choisir une salle' }, ...formSalleOptions]}
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {formSalleOptions.length === 0
+                  ? <span className="text-red-600 dark:text-red-400">Aucune salle libre à ce créneau — changez l'horaire</span>
+                  : `${formSalleOptions.length} salle(s) libre(s) à ce créneau`}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg px-3 py-2">
+            Les conflits (même formateur, même salle ou même groupe au même créneau) sont détectés automatiquement côté serveur.
+          </p>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDeleteSession}
+        title="Supprimer la séance"
+        message="Supprimer cette séance de l'emploi du temps ? Cette action est irréversible."
+      />
     </div>
   );
 };

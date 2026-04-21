@@ -30,7 +30,16 @@ class FormateurController extends Controller
             });
         }
 
-        $query->orderBy($request->input('sort_by', 'created_at'), $request->input('sort_dir', 'desc'));
+        $sortBy  = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc');
+
+        if (in_array($sortBy, ['nom', 'prenom', 'email', 'telephone'], true)) {
+            $query->join('users', 'users.id', '=', 'formateurs.user_id')
+                  ->orderBy("users.{$sortBy}", $sortDir)
+                  ->select('formateurs.*');
+        } else {
+            $query->orderBy($sortBy, $sortDir);
+        }
 
         return $this->paginated($query, $request);
     }

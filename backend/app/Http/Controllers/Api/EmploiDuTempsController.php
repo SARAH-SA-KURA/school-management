@@ -85,6 +85,34 @@ class EmploiDuTempsController extends Controller
             'heure_fin' => 'sometimes|date_format:H:i',
         ]);
 
+        // Conflict check on the final state (merge current + incoming), excluding self
+        $final = array_merge([
+            'group_id'     => $emploiDuTemp->group_id,
+            'module_id'    => $emploiDuTemp->module_id,
+            'formateur_id' => $emploiDuTemp->formateur_id,
+            'salle_id'     => $emploiDuTemp->salle_id,
+            'jour'         => $emploiDuTemp->jour,
+            'heure_debut'  => $emploiDuTemp->heure_debut,
+            'heure_fin'    => $emploiDuTemp->heure_fin,
+        ], $validated);
+
+        $conflict = EmploiDuTemps::where('id', '!=', $emploiDuTemp->id)
+            ->where('jour', $final['jour'])
+            ->where(function ($q) use ($final) {
+                $q->where('heure_debut', '<', $final['heure_fin'])
+                  ->where('heure_fin', '>', $final['heure_debut']);
+            })
+            ->where(function ($q) use ($final) {
+                $q->where('salle_id', $final['salle_id'])
+                  ->orWhere('formateur_id', $final['formateur_id'])
+                  ->orWhere('group_id', $final['group_id']);
+            })
+            ->first();
+
+        if ($conflict) {
+            return $this->error('Conflit détecté dans l\'emploi du temps (salle, formateur ou groupe déjà pris à ce créneau)', 422);
+        }
+
         $emploiDuTemp->update($validated);
         $emploiDuTemp->load(['group', 'module', 'formateur.user', 'salle']);
 

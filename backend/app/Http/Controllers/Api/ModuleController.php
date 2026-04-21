@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Filiere;
+use App\Models\Formateur;
 use App\Models\Module;
+use App\Services\NotificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ModuleController extends Controller
 {
@@ -66,6 +69,27 @@ class ModuleController extends Controller
 
         $module->load(['filiere', 'formateurs.user']);
 
+        // Notify newly assigned formateurs (post-transaction)
+        if (is_array($formateurIds) && count($formateurIds) > 0) {
+            try {
+                $formateurs = Formateur::with('user')->whereIn('id', $formateurIds)->get();
+                foreach ($formateurs as $formateur) {
+                    if ($formateur->user_id) {
+                        NotificationService::dispatch(
+                            $formateur->user_id,
+                            'module_assigned',
+                            'Nouveau module assigné',
+                            "Vous avez été assigné au module « {$module->nom} ».",
+                            '/formateur/modules',
+                            ['module_id' => $module->id]
+                        );
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('notification dispatch failed', ['error' => $e->getMessage()]);
+            }
+        }
+
         return $this->success($module, 'Module créé avec succès', 201);
     }
 
@@ -93,6 +117,11 @@ class ModuleController extends Controller
         $formateurIds = array_key_exists('formateur_ids', $validated) ? $validated['formateur_ids'] : null;
         unset($validated['formateur_ids']);
 
+        // Capture old formateur ids BEFORE sync so we can diff
+        $oldFormateurIds = $request->has('formateur_ids')
+            ? $module->formateurs()->pluck('formateurs.id')->toArray()
+            : [];
+
         DB::transaction(function () use ($validated, $module, $formateurIds, $request) {
             $module->update($validated);
             if ($request->has('formateur_ids')) {
@@ -101,6 +130,30 @@ class ModuleController extends Controller
         });
 
         $module->load(['filiere', 'formateurs.user']);
+
+        // Notify ONLY newly added formateurs (post-transaction)
+        if ($request->has('formateur_ids') && is_array($formateurIds)) {
+            $newlyAdded = array_diff($formateurIds, $oldFormateurIds);
+            if (count($newlyAdded) > 0) {
+                try {
+                    $formateurs = Formateur::with('user')->whereIn('id', $newlyAdded)->get();
+                    foreach ($formateurs as $formateur) {
+                        if ($formateur->user_id) {
+                            NotificationService::dispatch(
+                                $formateur->user_id,
+                                'module_assigned',
+                                'Nouveau module assigné',
+                                "Vous avez été assigné au module « {$module->nom} ».",
+                                '/formateur/modules',
+                                ['module_id' => $module->id]
+                            );
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('notification dispatch failed', ['error' => $e->getMessage()]);
+                }
+            }
+        }
 
         return $this->success($module, 'Module mis à jour');
     }
