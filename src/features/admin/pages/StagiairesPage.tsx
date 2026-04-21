@@ -6,7 +6,7 @@ import { DataTable, Modal, Button, Input, Select, ConfirmDialog } from '../../..
 import {
   HiSortAscending, HiX, HiMail, HiPhone, HiLocationMarker, HiCalendar,
   HiIdentification, HiAcademicCap, HiUserGroup, HiPlus, HiPencil, HiTrash,
-  HiDotsHorizontal, HiUpload,
+  HiDotsHorizontal, HiUpload, HiPrinter,
 } from 'react-icons/hi';
 import { formatDate } from '../../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -240,11 +240,20 @@ const StagiairesPage: React.FC = () => {
   const csvInputRef = useRef<HTMLInputElement>(null);
   const debouncedSearch = useDebounce(search);
 
+  // Filière / groupe filters (all roles)
+  const [allFilieres, setAllFilieres] = useState<any[]>([]);
+  const [allGroups, setAllGroups] = useState<any[]>([]);
+  const [filterFiliere, setFilterFiliere] = useState('');
+  const [filterGroup, setFilterGroup] = useState('');
+  const [printing, setPrinting] = useState(false);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { page, search: debouncedSearch, per_page: perPage, sort_by: 'nom', sort_dir: sortDir };
       if (groupIdParam) params.group_id = groupIdParam;
+      else if (filterGroup) params.group_id = filterGroup;
+      else if (filterFiliere) params.filiere_id = filterFiliere;
       const res = await stagiairesApi.getAll(params);
       setData(res.data.data);
       setTotalPages(res.data.meta.last_page);
@@ -253,7 +262,7 @@ const StagiairesPage: React.FC = () => {
       toast.error('Erreur de chargement');
     }
     setLoading(false);
-  }, [page, debouncedSearch, perPage, sortDir, groupIdParam]);
+  }, [page, debouncedSearch, perPage, sortDir, groupIdParam, filterFiliere, filterGroup]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setPage(1); }, [groupIdParam]);
@@ -264,15 +273,19 @@ const StagiairesPage: React.FC = () => {
     return () => document.removeEventListener('click', handler);
   }, []);
 
+  // Load filieres + groups for filters (all roles)
   useEffect(() => {
-    if (!canWrite) return;
-    dropdownApi.groups()
-      .then(res => {
-        const list: any[] = res.data?.data || [];
-        setGroupOptions(list.map(g => ({ id: g.id, nom: g.nom, filiere_id: g.filiere_id, filiere: g.filiere })));
-      })
-      .catch(() => {});
+    dropdownApi.filieres().then(r => setAllFilieres(r.data?.data || [])).catch(() => {});
+    dropdownApi.groups().then(res => {
+      const list: any[] = res.data?.data || [];
+      setAllGroups(list);
+      if (canWrite) setGroupOptions(list.map(g => ({ id: g.id, nom: g.nom, filiere_id: g.filiere_id, filiere: g.filiere })));
+    }).catch(() => {});
   }, [canWrite, formOpen, csvOpen]);
+
+  // Reset group filter when filière changes
+  useEffect(() => { setFilterGroup(''); setPage(1); }, [filterFiliere]);
+  useEffect(() => { setPage(1); }, [filterGroup]);
 
   const handlePerPageChange = (newPerPage: number) => { setPerPage(newPerPage); setPage(1); };
   const toggleSort = () => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setPage(1); };
@@ -436,6 +449,79 @@ const StagiairesPage: React.FC = () => {
     label: g.filiere?.nom ? `${g.nom} — ${g.filiere.nom}` : g.nom,
   }));
 
+  const filteredGroupsForFilter = allGroups.filter((g: any) =>
+    !filterFiliere || String(g.filiere_id) === filterFiliere
+  );
+
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      const params: any = { per_page: 1000, sort_by: 'nom', sort_dir: 'asc' };
+      if (groupIdParam) params.group_id = groupIdParam;
+      else if (filterGroup) params.group_id = filterGroup;
+      else if (filterFiliere) params.filiere_id = filterFiliere;
+      if (debouncedSearch) params.search = debouncedSearch;
+      const res = await stagiairesApi.getAll(params);
+      const rows: Stagiaire[] = res.data.data;
+
+      const filiereName = allFilieres.find((f: any) => String(f.id) === filterFiliere)?.nom || '';
+      const groupName = filteredGroupsForFilter.find((g: any) => String(g.id) === filterGroup)?.nom
+        || allGroups.find((g: any) => String(g.id) === groupIdParam)?.nom || '';
+
+      const title = [filiereName, groupName].filter(Boolean).join(' — ') || 'Tous les stagiaires';
+
+      const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+        <title>Liste des stagiaires</title>
+        <style>
+          body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 20px; }
+          h1 { font-size: 16px; margin-bottom: 4px; }
+          p.sub { font-size: 11px; color: #555; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #1e40af; color: #fff; text-align: left; padding: 7px 10px; font-size: 11px; }
+          td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+          tr:nth-child(even) td { background: #f8fafc; }
+          .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; }
+          .actif { background: #dcfce7; color: #166534; }
+          .suspendu { background: #fef9c3; color: #854d0e; }
+          .abandon { background: #fee2e2; color: #991b1b; }
+          .diplome { background: #dbeafe; color: #1e40af; }
+          @media print { @page { margin: 15mm; } }
+        </style></head><body>
+        <h1>Liste des stagiaires — ${title}</h1>
+        <p class="sub">Imprimé le ${new Date().toLocaleDateString('fr-FR')} · ${rows.length} stagiaire${rows.length > 1 ? 's' : ''}</p>
+        <table>
+          <thead><tr>
+            <th>#</th><th>CEF</th><th>Nom complet</th><th>Date naissance</th>
+            <th>Téléphone</th><th>Groupe</th><th>Filière</th><th>Statut</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((s, i) => `<tr>
+              <td>${i + 1}</td>
+              <td>${s.cef || ''}</td>
+              <td><strong>${(s as any).user?.prenom || ''} ${(s as any).user?.nom || ''}</strong></td>
+              <td>${s.date_naissance ? new Date(s.date_naissance).toLocaleDateString('fr-FR') : '—'}</td>
+              <td>${(s as any).user?.telephone || '—'}</td>
+              <td>${(s as any).group?.nom || '—'}</td>
+              <td>${(s as any).group?.filiere?.nom || '—'}</td>
+              <td><span class="badge ${s.status || 'actif'}">${statusConfig[s.status]?.label || s.status}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </body></html>`;
+
+      const win = window.open('', '_blank', 'width=900,height=700');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => { win.print(); }, 400);
+      }
+    } catch {
+      toast.error("Erreur lors de la génération de l'impression");
+    }
+    setPrinting(false);
+  };
+
   const columns: TableColumn<Stagiaire>[] = [
     {
       key: 'cef', label: 'ID', sortable: true,
@@ -495,22 +581,31 @@ const StagiairesPage: React.FC = () => {
             <span>Stagiaires</span>
           </p>
         </div>
-        {canWrite && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={openCsv}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors"
-            >
-              <HiUpload className="h-4 w-4" /> Import CSV
-            </button>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <HiPlus className="h-4 w-4" /> Ajouter Stagiaire
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePrint}
+            disabled={printing}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+          >
+            <HiPrinter className="h-4 w-4" /> {printing ? 'Préparation...' : 'Imprimer'}
+          </button>
+          {canWrite && (
+            <>
+              <button
+                onClick={openCsv}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors"
+              >
+                <HiUpload className="h-4 w-4" /> Import CSV
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <HiPlus className="h-4 w-4" /> Ajouter Stagiaire
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {groupIdParam && (
@@ -526,6 +621,37 @@ const StagiairesPage: React.FC = () => {
               <HiX className="h-3.5 w-3.5" />
             </button>
           </span>
+        </div>
+      )}
+
+      {/* Filière / Groupe filter bar */}
+      {!groupIdParam && (
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <select
+            value={filterFiliere}
+            onChange={e => setFilterFiliere(e.target.value)}
+            className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[170px]"
+          >
+            <option value="">Toutes les filières</option>
+            {allFilieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+          </select>
+          <select
+            value={filterGroup}
+            onChange={e => setFilterGroup(e.target.value)}
+            className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[150px]"
+            disabled={!filterFiliere}
+          >
+            <option value="">{filterFiliere ? 'Tous les groupes' : 'Choisir filière d\'abord'}</option>
+            {filteredGroupsForFilter.map((g: any) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+          </select>
+          {(filterFiliere || filterGroup) && (
+            <button
+              onClick={() => { setFilterFiliere(''); setFilterGroup(''); }}
+              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+            >
+              <HiX className="h-3.5 w-3.5" /> Effacer
+            </button>
+          )}
         </div>
       )}
 

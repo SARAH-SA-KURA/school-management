@@ -41,6 +41,10 @@ class StagiaireController extends Controller
             $query->where('group_id', $request->group_id);
         }
 
+        if ($request->has('filiere_id')) {
+            $query->whereHas('group', fn($q) => $q->where('filiere_id', $request->filiere_id));
+        }
+
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
