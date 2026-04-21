@@ -8,6 +8,7 @@ import { SALLE_TYPES } from '../../../utils/constants';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../../hooks/useDebounce';
 import { useRolePath } from '../../../hooks/useRolePath';
+import { useCan } from '../../../hooks/useCan';
 
 const DISPONIBILITE_OPTIONS = [
   { value: 'disponible', label: 'Disponible' },
@@ -16,6 +17,8 @@ const DISPONIBILITE_OPTIONS = [
 
 const SallesPage: React.FC = () => {
   const basePath = useRolePath();
+  const can = useCan();
+  const canWrite = can('write', 'salles');
   const [data, setData] = useState<Salle[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -111,10 +114,10 @@ const SallesPage: React.FC = () => {
         </span>
       ),
     },
-    {
+    ...(canWrite ? [{
       key: 'actions',
       label: 'Action',
-      render: (item) => (
+      render: (item: Salle) => (
         <div className="relative">
           <button
             onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
@@ -134,7 +137,7 @@ const SallesPage: React.FC = () => {
           )}
         </div>
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -151,13 +154,15 @@ const SallesPage: React.FC = () => {
             <span>Salles</span>
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <HiPlus className="h-4 w-4" />
-          Ajouter Salle
-        </button>
+        {canWrite && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <HiPlus className="h-4 w-4" />
+            Ajouter Salle
+          </button>
+        )}
       </div>
 
       <DataTable

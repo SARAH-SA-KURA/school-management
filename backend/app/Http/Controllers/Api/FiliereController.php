@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Filiere;
+use App\Models\Module;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FiliereController extends Controller
 {
@@ -39,12 +41,51 @@ class FiliereController extends Controller
             'nom' => 'required|string|max:255',
             'description' => 'nullable|string',
             'duree_mois' => 'required|integer|min:1',
+            'niveau' => 'nullable|string|max:255',
+            'secteur' => 'nullable|string|max:255',
             'is_active' => 'boolean',
+            'modules' => 'nullable|array',
+            'modules.*.nom' => 'required_with:modules|string|max:255',
+            'modules.*.heures_total' => 'required_with:modules|integer|min:0',
+            'modules.*.coefficient' => 'nullable|numeric|min:0',
+            'modules.*.semestre' => 'nullable|integer|min:1',
         ]);
 
-        $filiere = Filiere::create($validated);
+        $modulesData = $validated['modules'] ?? [];
+        unset($validated['modules']);
+
+        $filiere = DB::transaction(function () use ($validated, $modulesData) {
+            $filiere = Filiere::create($validated);
+
+            foreach ($modulesData as $i => $m) {
+                Module::create([
+                    'code' => $this->uniqueModuleCode($filiere->code, $i + 1),
+                    'nom' => $m['nom'],
+                    'heures_total' => $m['heures_total'],
+                    'coefficient' => $m['coefficient'] ?? 1,
+                    'semestre' => $m['semestre'] ?? 1,
+                    'filiere_id' => $filiere->id,
+                ]);
+            }
+
+            return $filiere;
+        });
+
+        $filiere->loadCount(['groups', 'modules']);
 
         return $this->success($filiere, 'Filière créée avec succès', 201);
+    }
+
+    private function uniqueModuleCode(string $filiereCode, int $index): string
+    {
+        $base = $filiereCode . '-M' . str_pad((string) $index, 2, '0', STR_PAD_LEFT);
+        $code = $base;
+        $n = 1;
+        while (Module::where('code', $code)->exists()) {
+            $n++;
+            $code = $base . chr(64 + $n); // -M01A, -M01B, ...
+        }
+        return $code;
     }
 
     public function show(Filiere $filiere)
@@ -60,6 +101,8 @@ class FiliereController extends Controller
             'nom' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'duree_mois' => 'sometimes|integer|min:1',
+            'niveau' => 'nullable|string|max:255',
+            'secteur' => 'nullable|string|max:255',
             'is_active' => 'boolean',
         ]);
 
@@ -76,6 +119,8 @@ class FiliereController extends Controller
 
     public function all()
     {
-        return $this->success(Filiere::where('is_active', true)->get(['id', 'code', 'nom']));
+        return $this->success(
+            Filiere::where('is_active', true)->get(['id', 'code', 'nom', 'niveau', 'secteur'])
+        );
     }
 }

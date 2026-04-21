@@ -31,7 +31,11 @@ export function createCrudApi<T>(basePath: string) {
 
 export const filieresApi = createCrudApi<Filiere>('/filieres');
 export const groupsApi = createCrudApi<Group>('/groups');
-export const modulesApi = createCrudApi<Module>('/modules');
+export const modulesApi = {
+  ...createCrudApi<Module>('/modules'),
+  bulkImport: (filiere_id: number, modules: Array<{ code?: string; nom: string; heures_total: number; coefficient?: number; semestre?: number; description?: string }>) =>
+    axiosInstance.post('/modules/bulk', { filiere_id, modules }),
+};
 export const sallesApi = createCrudApi<Salle>('/salles');
 export const formateursApi = createCrudApi<Formateur>('/formateurs');
 export const stagiairesApi = createCrudApi<Stagiaire>('/stagiaires');
@@ -60,4 +64,5 @@ export const dropdownApi = {
   filieres: () => axiosInstance.get('/filieres-all'),
   groups: (params?: { filiere_id?: number }) => axiosInstance.get('/groups-all', { params }),
   salles: () => axiosInstance.get('/salles-all'),
+  formateurs: () => axiosInstance.get('/formateurs-all'),
 };

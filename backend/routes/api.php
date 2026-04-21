@@ -17,7 +17,7 @@ use App\Http\Controllers\Api\{
     UserController,
 };
 
-// Auth routes (public)
+// ─── Public auth ───────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
@@ -26,56 +26,145 @@ Route::prefix('auth')->group(function () {
     Route::post('/verify-2fa', [AuthController::class, 'verify2FA']);
 });
 
-// Protected routes
+// ─── Authenticated area ───────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
-    // Auth
+
+    // ── Personal (any authenticated user) ──
     Route::get('/auth/me', [AuthController::class, 'me']);
-    Route::get('/auth/formateur', [AuthController::class, 'formateur']);
-    Route::get('/auth/stagiaire', [StagiaireController::class, 'stagiaire']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/profile', [AuthController::class, 'updateProfile']);
     Route::post('/auth/password', [AuthController::class, 'changePassword']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
-    // Dashboard
-    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
-    Route::get('/dashboard/recent-activity', [DashboardController::class, 'recentActivity']);
-    Route::get('/dashboard/stagiaires-by-filiere', [DashboardController::class, 'stagiairesByFiliere']);
+    // ── Self-scoped endpoints ──
+    Route::middleware('role:formateur')->group(function () {
+        Route::get('/auth/formateur', [AuthController::class, 'formateur']);
+    });
 
-    // CRUD Resources
-    Route::apiResource('filieres', FiliereController::class);
-    Route::get('/filieres-all', [FiliereController::class, 'all']);
+    Route::middleware('role:stagiaire')->group(function () {
+        Route::get('/auth/stagiaire', [StagiaireController::class, 'stagiaire']);
+        Route::get('/stagiaire/stats', [StagiaireController::class, 'stats']);
+        Route::get('/stagiaire/absences', [StagiaireController::class, 'absences']);
+        Route::get('/stagiaire/emploi', [StagiaireController::class, 'emploi']);
+        Route::get('/stagiaire/exams', [StagiaireController::class, 'exams']);
+        Route::get('/stagiaire/modules', [StagiaireController::class, 'modules']);
+    });
 
-    Route::apiResource('groups', GroupController::class);
-    Route::get('/groups-all', [GroupController::class, 'all']);
+    // ── Global dashboard (Directeur + Surveillant) ──
+    Route::middleware('role:directeur,surveillant')->group(function () {
+        Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+        Route::get('/dashboard/recent-activity', [DashboardController::class, 'recentActivity']);
+        Route::get('/dashboard/stagiaires-by-filiere', [DashboardController::class, 'stagiairesByFiliere']);
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // READS — open to any authenticated user; controllers scope
+    // output per role where relevant.
+    // ══════════════════════════════════════════════════════════
+    Route::get('/filieres',            [FiliereController::class, 'index']);
+    Route::get('/filieres-all',        [FiliereController::class, 'all']);
+    Route::get('/filieres/{filiere}',  [FiliereController::class, 'show']);
+
+    Route::get('/modules',             [ModuleController::class, 'index']);
+    Route::get('/modules/{module}',    [ModuleController::class, 'show']);
+
+    Route::get('/salles',              [SalleController::class, 'index']);
+    Route::get('/salles-all',          [SalleController::class, 'all']);
+    Route::get('/salles/{salle}',      [SalleController::class, 'show']);
+
+    Route::get('/groups',              [GroupController::class, 'index']);
+    Route::get('/groups-all',          [GroupController::class, 'all']);
+    Route::get('/groups/{group}',      [GroupController::class, 'show']);
     Route::get('/groups/{group}/stagiaires', [GroupController::class, 'stagiaires']);
 
-    Route::apiResource('modules', ModuleController::class);
-    Route::apiResource('salles', SalleController::class);
-    Route::get('/salles-all', [SalleController::class, 'all']);
+    Route::get('/emploi-du-temps',            [EmploiDuTempsController::class, 'index']);
+    Route::get('/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'show']);
 
-    Route::apiResource('formateurs', FormateurController::class);
-    Route::get('/formateurs/{formateur}/modules', [FormateurController::class, 'modules']);
+    Route::get('/examens',             [ExamenController::class, 'index']);
+    Route::get('/examens/{examen}',    [ExamenController::class, 'show']);
 
-    Route::apiResource('stagiaires', StagiaireController::class);
-    Route::get('/stagiaire/stats', [StagiaireController::class, 'stats']);
-    Route::get('/stagiaire/absences', [StagiaireController::class, 'absences']);
-    Route::get('/stagiaire/emploi', [StagiaireController::class, 'emploi']);
-    Route::get('/stagiaire/exams', [StagiaireController::class, 'exams']);
-    Route::get('/stagiaire/modules', [StagiaireController::class, 'modules']);
+    // Reads restricted to staff (not stagiaires) for staff/student rosters
+    Route::middleware('role:directeur,surveillant,formateur')->group(function () {
+        Route::get('/formateurs',                        [FormateurController::class, 'index']);
+        Route::get('/formateurs-all',                    [FormateurController::class, 'all']);
+        Route::get('/formateurs/{formateur}',            [FormateurController::class, 'show']);
+        Route::get('/formateurs/{formateur}/modules',    [FormateurController::class, 'modules']);
 
-    Route::apiResource('examens', ExamenController::class);
+        Route::get('/stagiaires',                        [StagiaireController::class, 'index']);
+        Route::get('/stagiaires/{stagiaire}',            [StagiaireController::class, 'show']);
 
-    Route::get('/notes', [NoteController::class, 'index']);
-    Route::get('/grades', [NoteController::class, 'grades']);
-    Route::post('/notes/batch', [NoteController::class, 'batchStore']);
-    Route::put('/notes/{note}', [NoteController::class, 'update']);
+        Route::get('/notes',                             [NoteController::class, 'index']);
+        Route::get('/grades',                            [NoteController::class, 'grades']);
 
-    Route::apiResource('absences', AbsenceController::class)->except(['show']);
+        Route::get('/absences',                          [AbsenceController::class, 'index']);
+    });
 
-    Route::apiResource('emploi-du-temps', EmploiDuTempsController::class)->parameters([
-        'emploi-du-temps' => 'emploiDuTemp',
-    ]);
+    // Users list — Directeur only
+    Route::middleware('role:directeur')->group(function () {
+        Route::get('/users',            [UserController::class, 'index']);
+        Route::get('/users/{user}',     [UserController::class, 'show']);
+    });
 
-    Route::apiResource('users', UserController::class);
+    // ══════════════════════════════════════════════════════════
+    // WRITES — role-gated per OFPPT responsibilities
+    // ══════════════════════════════════════════════════════════
+
+    // Directeur — catalog (filières/modules/salles/formateurs) + user accounts
+    Route::middleware('role:directeur')->group(function () {
+        Route::post  ('/filieres',           [FiliereController::class, 'store']);
+        Route::match (['put','patch'], '/filieres/{filiere}', [FiliereController::class, 'update']);
+        Route::delete('/filieres/{filiere}', [FiliereController::class, 'destroy']);
+
+        Route::post  ('/modules',            [ModuleController::class, 'store']);
+        Route::post  ('/modules/bulk',       [ModuleController::class, 'bulkStore']);
+        Route::match (['put','patch'], '/modules/{module}', [ModuleController::class, 'update']);
+        Route::delete('/modules/{module}',   [ModuleController::class, 'destroy']);
+
+        Route::post  ('/salles',             [SalleController::class, 'store']);
+        Route::match (['put','patch'], '/salles/{salle}', [SalleController::class, 'update']);
+        Route::delete('/salles/{salle}',     [SalleController::class, 'destroy']);
+
+        Route::post  ('/formateurs',         [FormateurController::class, 'store']);
+        Route::match (['put','patch'], '/formateurs/{formateur}', [FormateurController::class, 'update']);
+        Route::delete('/formateurs/{formateur}', [FormateurController::class, 'destroy']);
+
+        Route::post  ('/users',              [UserController::class, 'store']);
+        Route::match (['put','patch'], '/users/{user}', [UserController::class, 'update']);
+        Route::delete('/users/{user}',       [UserController::class, 'destroy']);
+    });
+
+    // Directeur + Surveillant — operational writes
+    // (groupes, stagiaires, emploi du temps, examens scheduling, absence consolidation)
+    Route::middleware('role:directeur,surveillant')->group(function () {
+        Route::post  ('/groups',             [GroupController::class, 'store']);
+        Route::match (['put','patch'], '/groups/{group}', [GroupController::class, 'update']);
+        Route::delete('/groups/{group}',     [GroupController::class, 'destroy']);
+
+        Route::post  ('/stagiaires',         [StagiaireController::class, 'store']);
+        Route::match (['put','patch'], '/stagiaires/{stagiaire}', [StagiaireController::class, 'update']);
+        Route::delete('/stagiaires/{stagiaire}', [StagiaireController::class, 'destroy']);
+
+        Route::post  ('/emploi-du-temps',    [EmploiDuTempsController::class, 'store']);
+        Route::match (['put','patch'], '/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'update']);
+        Route::delete('/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'destroy']);
+
+        Route::post  ('/examens',            [ExamenController::class, 'store']);
+        Route::match (['put','patch'], '/examens/{examen}', [ExamenController::class, 'update']);
+        Route::delete('/examens/{examen}',   [ExamenController::class, 'destroy']);
+    });
+
+    // Directeur + Surveillant + Formateur — absence entries
+    // (formateur per-session; surveillant/directeur consolidate + justify)
+    Route::middleware('role:directeur,surveillant,formateur')->group(function () {
+        Route::post  ('/absences',           [AbsenceController::class, 'store']);
+        Route::match (['put','patch'], '/absences/{absence}', [AbsenceController::class, 'update']);
+        Route::delete('/absences/{absence}', [AbsenceController::class, 'destroy']);
+    });
+
+    // Directeur + Formateur — notes (grades)
+    // (formateur for own modules; directeur may override)
+    Route::middleware('role:directeur,formateur')->group(function () {
+        Route::post('/notes/batch',   [NoteController::class, 'batchStore']);
+        Route::put ('/notes/{note}',  [NoteController::class, 'update']);
+    });
 });

@@ -77,7 +77,7 @@ const ParametresPage: React.FC = () => {
     if (!cu?.id) { toast.error('Session expirée'); return; }
     setSavingAccount(true);
     try {
-      const res = await axiosInstance.put(`/users/${cu.id}`, {
+      const res = await axiosInstance.post('/auth/profile', {
         nom: form.nom, prenom: form.prenom, telephone: form.telephone || null,
       });
       const updated = { ...cu, ...(res.data.data ?? {}) };

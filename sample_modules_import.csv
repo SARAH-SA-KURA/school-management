@@ -1,0 +1,11 @@
+nom,heures_total,coefficient,semestre,code,description
+Bases de données relationnelles,90,2,1,,Modelisation et SQL
+Algorithmique et structures de données,120,3,1,,Bases de l'algorithmique
+Programmation orientée objet,100,2.5,1,,Concepts POO en Java
+Développement web front-end,80,2,2,,HTML CSS JavaScript
+Développement web back-end,100,2.5,2,,PHP Laravel Node
+Frameworks JavaScript,60,2,2,,React Vue Angular
+API REST et services web,60,1.5,3,,Conception et consommation d'API
+Sécurité des applications web,45,1,3,,OWASP et bonnes pratiques
+Gestion de projet Agile,30,1,3,,Scrum et Kanban
+Culture d'entreprise,20,0.5,4,,Savoir-être professionnel

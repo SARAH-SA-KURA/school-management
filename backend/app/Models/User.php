@@ -54,4 +54,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(ActivityLog::class);
     }
+
+    public function hasRole(string|array $role): bool
+    {
+        return is_array($role) ? in_array($this->role, $role, true) : $this->role === $role;
+    }
+
+    public function isDirecteur(): bool { return $this->role === 'directeur'; }
+    public function isSurveillant(): bool { return $this->role === 'surveillant'; }
+    public function isFormateur(): bool { return $this->role === 'formateur'; }
+    public function isStagiaire(): bool { return $this->role === 'stagiaire'; }
 }

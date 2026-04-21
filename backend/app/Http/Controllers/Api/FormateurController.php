@@ -136,4 +136,12 @@ class FormateurController extends Controller
         $modules = $formateur->modules()->get();
         return $this->success($modules);
     }
+
+    public function all()
+    {
+        $formateurs = Formateur::with('user:id,nom,prenom,email')
+            ->get(['id', 'user_id', 'matricule', 'specialisation']);
+
+        return $this->success($formateurs);
+    }
 }

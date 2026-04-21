@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { formateursApi } from '../../../api/crudApi';
+import { formateursApi, modulesApi } from '../../../api/crudApi';
 import { Formateur, TableColumn } from '../../../types';
-import { DataTable } from '../../../components/ui';
-import { HiSortAscending, HiX, HiMail, HiPhone, HiCalendar, HiIdentification, HiAcademicCap, HiBookOpen } from 'react-icons/hi';
+import { DataTable, Modal, Button, Input, ConfirmDialog } from '../../../components/ui';
+import { HiSortAscending, HiX, HiMail, HiPhone, HiCalendar, HiIdentification, HiAcademicCap, HiBookOpen, HiPlus, HiPencil, HiTrash, HiDotsHorizontal } from 'react-icons/hi';
 import { formatDate } from '../../../utils/formatters';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../../hooks/useDebounce';
 import { useRolePath } from '../../../hooks/useRolePath';
+import { useCan } from '../../../hooks/useCan';
 import Spinner from '../../../components/ui/Spinner';
+
+const emptyForm = {
+  nom: '', prenom: '', email: '', password: '', telephone: '',
+  matricule: '', specialisation: '', date_recrutement: '',
+  module_ids: [] as number[],
+};
 
 const BACKEND_URL = (process.env.REACT_APP_API_URL || 'http://localhost:8000/api').replace('/api', '');
 const getAvatarUrl = (avatar?: string | null) => {
@@ -170,6 +177,8 @@ const ProfileModal: React.FC<{ formateur: any; onClose: () => void }> = ({ forma
 
 const FormateursPage: React.FC = () => {
   const basePath = useRolePath();
+  const can = useCan();
+  const canWrite = can('write', 'formateurs');
   const [data, setData] = useState<Formateur[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -182,6 +191,14 @@ const FormateursPage: React.FC = () => {
   const debouncedSearch = useDebounce(search);
   const [profileData, setProfileData] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [allModules, setAllModules] = useState<any[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editing, setEditing] = useState<Formateur | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [moduleSearch, setModuleSearch] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -197,6 +214,19 @@ const FormateursPage: React.FC = () => {
   }, [page, debouncedSearch, perPage, sortDir]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (!canWrite) return;
+    modulesApi.getAll({ per_page: 200 })
+      .then(res => setAllModules(res.data.data || []))
+      .catch(() => {});
+  }, [canWrite]);
+
+  useEffect(() => {
+    const handler = () => setOpenMenuId(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
 
   const handlePerPageChange = (newPerPage: number) => {
     setPerPage(newPerPage);
@@ -217,6 +247,93 @@ const FormateursPage: React.FC = () => {
       toast.error('Erreur lors du chargement du profil');
     }
     setProfileLoading(false);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setModuleSearch('');
+    setFormOpen(true);
+  };
+
+  const openEdit = async (f: Formateur) => {
+    setOpenMenuId(null);
+    setModuleSearch('');
+    try {
+      const res = await formateursApi.getById(f.id);
+      const full = res.data.data;
+      setEditing(full);
+      setForm({
+        nom: full.user?.nom || '',
+        prenom: full.user?.prenom || '',
+        email: full.user?.email || '',
+        password: '',
+        telephone: full.user?.telephone || '',
+        matricule: full.matricule || '',
+        specialisation: full.specialisation || '',
+        date_recrutement: (full.date_recrutement || '').slice(0, 10),
+        module_ids: (full.modules || []).map((m: any) => m.id),
+      });
+      setFormOpen(true);
+    } catch {
+      toast.error('Erreur lors du chargement du formateur');
+    }
+  };
+
+  const toggleModule = (id: number) => {
+    setForm(p => ({
+      ...p,
+      module_ids: p.module_ids.includes(id)
+        ? p.module_ids.filter(x => x !== id)
+        : [...p.module_ids, id],
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const base: any = {
+        nom: form.nom, prenom: form.prenom, email: form.email,
+        telephone: form.telephone || null,
+        matricule: form.matricule,
+        specialisation: form.specialisation,
+        date_recrutement: form.date_recrutement,
+        module_ids: form.module_ids,
+      };
+      if (editing) {
+        await formateursApi.update(editing.id, base);
+        toast.success('Formateur mis à jour');
+      } else {
+        await formateursApi.create({ ...base, password: form.password });
+        toast.success('Formateur créé');
+      }
+      setFormOpen(false);
+      fetchData();
+    } catch (err: any) {
+      const errors = err.response?.data?.errors;
+      const firstErr = errors ? Object.values(errors).flat()[0] : null;
+      toast.error((firstErr as string) || err.response?.data?.message || 'Erreur');
+    }
+    setSaving(false);
+  };
+
+  const askDelete = (f: Formateur) => {
+    setEditing(f);
+    setDeleteOpen(true);
+    setOpenMenuId(null);
+  };
+
+  const handleDelete = async () => {
+    if (!editing) return;
+    try {
+      await formateursApi.delete(editing.id);
+      toast.success('Formateur désactivé');
+      setDeleteOpen(false);
+      setEditing(null);
+      fetchData();
+    } catch {
+      toast.error('Erreur');
+    }
   };
 
   const columns: TableColumn<Formateur>[] = [
@@ -266,28 +383,64 @@ const FormateursPage: React.FC = () => {
       key: 'actions',
       label: 'Action',
       render: (item) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); openProfile(item.id); }}
-          className="px-4 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          Voir Profile
-        </button>
+        <div className="relative">
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
+            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+          >
+            <HiDotsHorizontal className="h-5 w-5" />
+          </button>
+          {openMenuId === item.id && (
+            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10 min-w-[160px]">
+              <button onClick={(e) => { e.stopPropagation(); openProfile(item.id); setOpenMenuId(null); }} className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2">
+                <HiIdentification className="h-4 w-4" /> Voir Profile
+              </button>
+              {canWrite && (
+                <>
+                  <button onClick={(e) => { e.stopPropagation(); openEdit(item); }} className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2">
+                    <HiPencil className="h-4 w-4" /> Modifier
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); askDelete(item); }} className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
+                    <HiTrash className="h-4 w-4" /> Supprimer
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       ),
     },
   ];
 
+  const filteredModules = moduleSearch
+    ? allModules.filter(m =>
+        `${m.nom} ${m.code || ''}`.toLowerCase().includes(moduleSearch.toLowerCase())
+      )
+    : allModules;
+
   return (
     <div>
       {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Formateurs</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
-          {' / '}
-          <span className="text-primary-600 dark:text-primary-400">Personnes</span>
-          {' / '}
-          <span>Formateurs</span>
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Formateurs</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            <Link to={`${basePath}/dashboard`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700">Tableau de bord</Link>
+            {' / '}
+            <span className="text-primary-600 dark:text-primary-400">Personnes</span>
+            {' / '}
+            <span>Formateurs</span>
+          </p>
+        </div>
+        {canWrite && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <HiPlus className="h-4 w-4" />
+            Ajouter Formateur
+          </button>
+        )}
       </div>
 
       <DataTable
@@ -329,6 +482,90 @@ const FormateursPage: React.FC = () => {
           <ProfileModal formateur={profileData} onClose={() => setProfileData(null)} />
         )
       )}
+
+      {/* Create / Edit Modal */}
+      <Modal
+        isOpen={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editing ? 'Modifier le formateur' : 'Ajouter un formateur'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Annuler</Button>
+            <Button onClick={handleSave} loading={saving}>Enregistrer</Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Informations personnelles</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Prénom" value={form.prenom} onChange={e => setForm(p => ({ ...p, prenom: e.target.value }))} required />
+              <Input label="Nom" value={form.nom} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} required />
+              <Input label="Email" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} required />
+              <Input label="Téléphone" value={form.telephone} onChange={e => setForm(p => ({ ...p, telephone: e.target.value }))} placeholder="06..." />
+              {!editing && (
+                <Input label="Mot de passe" type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} required placeholder="Min. 8 caractères" />
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Informations professionnelles</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <Input label="Matricule" value={form.matricule} onChange={e => setForm(p => ({ ...p, matricule: e.target.value }))} required />
+              <Input label="Spécialisation" value={form.specialisation} onChange={e => setForm(p => ({ ...p, specialisation: e.target.value }))} required />
+              <Input label="Date de recrutement" type="date" value={form.date_recrutement} onChange={e => setForm(p => ({ ...p, date_recrutement: e.target.value }))} required />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Modules enseignés ({form.module_ids.length})
+              </h4>
+              <input
+                type="text"
+                value={moduleSearch}
+                onChange={e => setModuleSearch(e.target.value)}
+                placeholder="Rechercher un module..."
+                className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 w-48 outline-none placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500"
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
+              {filteredModules.length === 0 ? (
+                <p className="p-4 text-sm text-gray-400 dark:text-gray-500 text-center">Aucun module</p>
+              ) : (
+                filteredModules.map((m: any) => {
+                  const checked = form.module_ids.includes(m.id);
+                  return (
+                    <label key={m.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleModule(m.id)}
+                        className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{m.nom}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{m.code || '-'} · {m.filiere?.nom || 'Sans filière'}</p>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+        title="Désactiver le formateur"
+        message={`Désactiver "${editing?.user?.prenom} ${editing?.user?.nom}" ? Son compte sera suspendu.`}
+      />
     </div>
   );
 };

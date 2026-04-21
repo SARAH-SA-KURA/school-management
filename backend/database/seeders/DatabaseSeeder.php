@@ -358,44 +358,86 @@ class DatabaseSeeder extends Seeder
         }
 
         // ──────────────── Emploi du temps ────────────────
+        // Conflict-free scheduler: for each (jour, slot), tracks which
+        // formateurs, salles, and groups are already booked so nobody is
+        // physically double-booked.
 
-        $jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
+        $jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+        // Index 2 (12:30-14:00) is the lunch break — never scheduled.
         $creneaux = [
             ['08:30', '10:30'],
-            ['10:45', '12:45'],
+            ['10:30', '12:30'],
+            null, // lunch break
             ['14:00', '16:00'],
-            ['16:15', '18:15'],
+            ['16:00', '18:30'],
         ];
+        $schedulableIndexes = [0, 1, 3, 4];
 
-        $courseSalles = $salles->filter(fn ($s) => in_array($s->type, ['cours', 'tp']));
+        $courseSalles = $salles->filter(fn ($s) => in_array($s->type, ['cours', 'tp']))->values();
+
+        // slotBookings[jour][slotIdx] = ['formateurs' => [...], 'salles' => [...], 'groups' => [...]]
+        $slotBookings = [];
+        foreach ($jours as $j) {
+            foreach ($schedulableIndexes as $idx) {
+                $slotBookings[$j][$idx] = ['formateurs' => [], 'salles' => [], 'groups' => []];
+            }
+        }
 
         foreach ($allGroups as $group) {
             $filiereModules = $allModules->where('filiere_id', $group->filiere_id)->values();
             if ($filiereModules->isEmpty()) continue;
 
-            $slotIndex = 0;
+            $moduleIdx = 0;
             foreach ($jours as $jour) {
-                $slotsForDay = fake()->numberBetween(2, 3);
-                $usedSlots = collect($creneaux)->shuffle()->take($slotsForDay);
+                // Saturday: morning slots only (08:30-10:30, 10:30-12:30)
+                $daySchedulable = $jour === 'samedi' ? [0, 1] : $schedulableIndexes;
+                $slotsForDay = $jour === 'samedi'
+                    ? fake()->numberBetween(1, 2)
+                    : fake()->numberBetween(2, 3);
 
-                foreach ($usedSlots as $slot) {
-                    $module = $filiereModules[$slotIndex % $filiereModules->count()];
-                    $formateur = $module->formateurs->first();
-                    if (!$formateur) continue;
+                $slotIndexes = collect($daySchedulable)->shuffle()->take($slotsForDay);
 
-                    $salle = $courseSalles->random();
+                foreach ($slotIndexes as $slotIdx) {
+                    $slot = $creneaux[$slotIdx];
+
+                    // Skip if this group is already booked at this slot (shouldn't happen but defensive)
+                    if (in_array($group->id, $slotBookings[$jour][$slotIdx]['groups'], true)) continue;
+
+                    // Try to find a module whose formateur is available at this slot
+                    $chosenModule = null;
+                    $chosenFormateur = null;
+                    for ($attempt = 0; $attempt < $filiereModules->count(); $attempt++) {
+                        $candidate = $filiereModules[($moduleIdx + $attempt) % $filiereModules->count()];
+                        $formateur = $candidate->formateurs->first();
+                        if (!$formateur) continue;
+                        if (in_array($formateur->id, $slotBookings[$jour][$slotIdx]['formateurs'], true)) continue;
+                        $chosenModule = $candidate;
+                        $chosenFormateur = $formateur;
+                        $moduleIdx = ($moduleIdx + $attempt + 1) % $filiereModules->count();
+                        break;
+                    }
+                    if (!$chosenModule) continue;
+
+                    // Pick a free salle at this slot
+                    $freeSalles = $courseSalles->filter(
+                        fn ($s) => !in_array($s->id, $slotBookings[$jour][$slotIdx]['salles'], true)
+                    )->values();
+                    if ($freeSalles->isEmpty()) continue;
+                    $salle = $freeSalles->random();
 
                     EmploiDuTemps::create([
                         'group_id' => $group->id,
-                        'module_id' => $module->id,
-                        'formateur_id' => $formateur->id,
+                        'module_id' => $chosenModule->id,
+                        'formateur_id' => $chosenFormateur->id,
                         'salle_id' => $salle->id,
                         'jour' => $jour,
                         'heure_debut' => $slot[0],
                         'heure_fin' => $slot[1],
                     ]);
 
-                    $slotIndex++;
+                    $slotBookings[$jour][$slotIdx]['formateurs'][] = $chosenFormateur->id;
+                    $slotBookings[$jour][$slotIdx]['salles'][] = $salle->id;
+                    $slotBookings[$jour][$slotIdx]['groups'][] = $group->id;
                 }
             }
         }
