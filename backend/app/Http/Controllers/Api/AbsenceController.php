@@ -179,4 +179,54 @@ class AbsenceController extends Controller
 
         return $this->success($warnings);
     }
+
+    public function summary(Request $request)
+    {
+        $timeExpr = "(strftime('%H', heure_fin) * 60 + strftime('%M', heure_fin)) - (strftime('%H', heure_debut) * 60 + strftime('%M', heure_debut))";
+
+        $query = Absence::selectRaw("
+            stagiaire_id,
+            SUM({$timeExpr}) as total_mins,
+            SUM(CASE WHEN status = 'non_justifiee' THEN {$timeExpr} ELSE 0 END) as non_justifiee_mins,
+            SUM(CASE WHEN status = 'en_attente'    THEN {$timeExpr} ELSE 0 END) as en_attente_mins,
+            SUM(CASE WHEN status = 'justifiee'     THEN {$timeExpr} ELSE 0 END) as justifiee_mins,
+            COUNT(*) as total_count
+        ")->groupBy('stagiaire_id');
+
+        $rows = $query->get()->keyBy('stagiaire_id');
+
+        $stagiaireQuery = \App\Models\Stagiaire::with([
+            'user:id,nom,prenom',
+            'group:id,nom,filiere_id',
+            'group.filiere:id,nom',
+        ])->where('status', 'actif');
+
+        if ($request->filled('filiere_id')) {
+            $stagiaireQuery->whereHas('group', fn($q) => $q->where('filiere_id', $request->filiere_id));
+        }
+        if ($request->filled('group_id')) {
+            $stagiaireQuery->where('group_id', $request->group_id);
+        }
+
+        $stagiaires = $stagiaireQuery->get();
+
+        $result = $stagiaires->map(function ($s) use ($rows) {
+            $r = $rows->get($s->id);
+            return [
+                'stagiaire_id'       => $s->id,
+                'nom'                => $s->user->nom ?? '',
+                'prenom'             => $s->user->prenom ?? '',
+                'cef'                => $s->cef,
+                'group'              => $s->group->nom ?? '',
+                'filiere'            => $s->group->filiere->nom ?? '',
+                'total_hours'        => $r ? round($r->total_mins / 60, 1) : 0,
+                'non_justifiee_hours'=> $r ? round($r->non_justifiee_mins / 60, 1) : 0,
+                'en_attente_hours'   => $r ? round($r->en_attente_mins / 60, 1) : 0,
+                'justifiee_hours'    => $r ? round($r->justifiee_mins / 60, 1) : 0,
+                'total_count'        => $r ? (int) $r->total_count : 0,
+            ];
+        })->sortByDesc('total_hours')->values();
+
+        return $this->success($result);
+    }
 }

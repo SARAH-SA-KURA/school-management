@@ -112,6 +112,14 @@ const AbsencesPage: React.FC = () => {
   const [savingStatus, setSavingStatus] = useState(false);
   const debouncedSearch = useDebounce(search);
 
+  // ── Par stagiaire tab ──
+  const [activeTab, setActiveTab] = useState<'list' | 'summary'>('list');
+  const [summaryData, setSummaryData] = useState<any[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryFiliere, setSummaryFiliere] = useState('');
+  const [summaryGroup, setSummaryGroup] = useState('');
+  const [summarySearch, setSummarySearch] = useState('');
+
   // Compute date range from year/month/week selections
   const dateRange = useMemo(() => {
     if (!filterYear) return { from: '', to: '' };
@@ -168,8 +176,22 @@ const AbsencesPage: React.FC = () => {
     } catch {}
   }, []);
 
+  const fetchSummary = useCallback(async () => {
+    if (activeTab !== 'summary') return;
+    setSummaryLoading(true);
+    try {
+      const params: any = {};
+      if (summaryFiliere) params.filiere_id = summaryFiliere;
+      if (summaryGroup) params.group_id = summaryGroup;
+      const res = await axiosInstance.get('/absences/summary', { params });
+      setSummaryData(res.data?.data || []);
+    } catch { setSummaryData([]); }
+    setSummaryLoading(false);
+  }, [activeTab, summaryFiliere, summaryGroup]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchStats(); fetchWarnings(); }, [fetchStats, fetchWarnings]);
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
   // Load filières + groups once
   useEffect(() => {
@@ -371,6 +393,20 @@ const AbsencesPage: React.FC = () => {
     setFilterStatus('');
   };
 
+  const summaryGroupOptions: SelectOption[] = allGroups
+    .filter((g: any) => !summaryFiliere || String(g.filiere_id) === summaryFiliere)
+    .map((g: any) => ({ value: String(g.id), label: g.nom }));
+
+  const filteredSummary = useMemo(() => {
+    if (!summarySearch) return summaryData;
+    const q = summarySearch.toLowerCase();
+    return summaryData.filter((s: any) =>
+      `${s.prenom} ${s.nom}`.toLowerCase().includes(q) ||
+      s.cef?.toLowerCase().includes(q) ||
+      s.group?.toLowerCase().includes(q)
+    );
+  }, [summaryData, summarySearch]);
+
   const handleExport = async () => {
     try {
       const params: any = { per_page: 5000 };
@@ -520,6 +556,124 @@ const AbsencesPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex items-center gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setActiveTab('list')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === 'list' ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+        >
+          Liste des absences
+        </button>
+        <button
+          onClick={() => setActiveTab('summary')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === 'summary' ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+        >
+          Total heures par stagiaire
+        </button>
+      </div>
+
+      {/* ── SUMMARY TAB ── */}
+      {activeTab === 'summary' && (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+          <div className="flex items-center gap-3 px-6 pt-5 pb-4 flex-wrap">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mr-2">Heures d'absence par stagiaire</h2>
+            <select
+              value={summaryFiliere}
+              onChange={e => { setSummaryFiliere(e.target.value); setSummaryGroup(''); }}
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[160px]"
+            >
+              <option value="">Toutes les filières</option>
+              {allFilieres.map((f: any) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+            </select>
+            <select
+              value={summaryGroup}
+              onChange={e => setSummaryGroup(e.target.value)}
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[130px]"
+              disabled={!summaryFiliere}
+            >
+              <option value="">Tous les groupes</option>
+              {summaryGroupOptions.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
+            <div className="relative ml-auto">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" strokeWidth={2}/><path strokeLinecap="round" strokeWidth={2} d="M21 21l-4.35-4.35"/></svg>
+              <input
+                type="text"
+                value={summarySearch}
+                onChange={e => setSummarySearch(e.target.value)}
+                placeholder="Rechercher stagiaire..."
+                className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg pl-9 pr-3 py-1.5 text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-800 min-w-[200px] outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50/50 dark:bg-gray-800/60 border-y border-gray-100 dark:border-gray-700">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Stagiaire</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">CEF</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Groupe</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Filière</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 dark:text-gray-300">Total absences</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-red-600 dark:text-red-400">Non justifiées</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-yellow-600 dark:text-yellow-400">En attente</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-green-600 dark:text-green-400">Justifiées</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Seuil OFPPT</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                {summaryLoading ? (
+                  <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Chargement...</td></tr>
+                ) : filteredSummary.length === 0 ? (
+                  <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">
+                    {summaryData.length === 0 ? 'Sélectionnez une filière ou un groupe pour afficher les données' : 'Aucun résultat'}
+                  </td></tr>
+                ) : filteredSummary.map((s: any) => {
+                  const level = s.non_justifiee_hours >= 54 ? 'suspension' : s.non_justifiee_hours >= 36 ? 'warning' : null;
+                  return (
+                    <tr key={s.stagiaire_id} className={`hover:bg-gray-50/50 dark:hover:bg-gray-700/50 ${level === 'suspension' ? 'bg-red-50/30 dark:bg-red-900/10' : level === 'warning' ? 'bg-orange-50/30 dark:bg-orange-900/10' : ''}`}>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{s.prenom} {s.nom}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{s.cef}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{s.group}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{s.filiere}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{s.total_hours}h</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({s.total_count})</span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-red-600 dark:text-red-400">{s.non_justifiee_hours}h</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-yellow-600 dark:text-yellow-400">{s.en_attente_hours}h</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-green-600 dark:text-green-400">{s.justifiee_hours}h</td>
+                      <td className="px-4 py-3">
+                        {level === 'suspension' && (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white">Risque suspension</span>
+                        )}
+                        {level === 'warning' && (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">Avertissement</span>
+                        )}
+                        {!level && s.total_hours > 0 && (
+                          <span className="text-xs text-gray-400 dark:text-gray-500">Normal</span>
+                        )}
+                        {s.total_hours === 0 && (
+                          <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredSummary.length > 0 && (
+            <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500">
+              {filteredSummary.length} stagiaire{filteredSummary.length > 1 ? 's' : ''} · Seuil OFPPT : 36h = avertissement, 54h = risque de suspension (heures non justifiées)
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'list' && (
+      <>
       {/* Summary Cards — real totals from stats endpoint */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
@@ -697,6 +851,8 @@ const AbsencesPage: React.FC = () => {
         <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
           Affichage filtré pour un seul stagiaire.
         </div>
+      )}
+      </>
       )}
 
       {/* Create absence modal */}

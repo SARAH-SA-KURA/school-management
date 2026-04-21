@@ -106,6 +106,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/absences',                          [AbsenceController::class, 'index']);
         Route::get('/absences/stats',                    [AbsenceController::class, 'stats']);
         Route::get('/absences/warnings',                 [AbsenceController::class, 'warnings']);
+        Route::get('/absences/summary',                  [AbsenceController::class, 'summary']);
     });
 
     // Users list — Directeur only
