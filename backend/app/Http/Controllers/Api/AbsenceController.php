@@ -13,6 +13,58 @@ class AbsenceController extends Controller
 {
     use ApiResponse;
 
+    // Per-stagiaire cumulative caps (in minutes).
+    // Once exceeded, further absences in that status are rejected.
+    private const CAP_NON_JUSTIFIEE_MIN = 32 * 60; // 32h
+    private const CAP_EN_ATTENTE_MIN    =  5 * 60; // 5h
+
+    private function minutesOf(string $debut, string $fin): int
+    {
+        [$h1, $m1] = array_map('intval', explode(':', $debut));
+        [$h2, $m2] = array_map('intval', explode(':', $fin));
+        return max(0, ($h2 * 60 + $m2) - ($h1 * 60 + $m1));
+    }
+
+    private function cumulativeMinutes(int $stagiaireId, string $status, ?int $excludeId = null): int
+    {
+        $q = Absence::where('stagiaire_id', $stagiaireId)->where('status', $status);
+        if ($excludeId !== null) $q->where('id', '!=', $excludeId);
+        return (int) ($q->selectRaw(
+            "COALESCE(SUM((strftime('%H', heure_fin) * 60 + strftime('%M', heure_fin)) "
+          . "- (strftime('%H', heure_debut) * 60 + strftime('%M', heure_debut))), 0) as mins"
+        )->value('mins') ?? 0);
+    }
+
+    private function fmtH(int $minutes): string
+    {
+        $h = $minutes / 60;
+        return (fmod($h, 1) === 0.0 ? (int) $h : number_format($h, 1, '.', '')) . 'h';
+    }
+
+    /** Returns an error message if the status cap would be exceeded, null otherwise. */
+    private function capCheck(int $stagiaireId, string $newStatus, int $addingMinutes, ?int $excludeId = null): ?string
+    {
+        if ($newStatus === 'non_justifiee') {
+            $cap = self::CAP_NON_JUSTIFIEE_MIN;
+            $current = $this->cumulativeMinutes($stagiaireId, 'non_justifiee', $excludeId);
+            if ($current + $addingMinutes > $cap) {
+                return "Impossible : ce stagiaire cumulerait " . $this->fmtH($current + $addingMinutes)
+                     . " d'absences non justifiées, au-delà de la limite de " . $this->fmtH($cap)
+                     . " (actuel : " . $this->fmtH($current) . ", +" . $this->fmtH($addingMinutes) . ").";
+            }
+        }
+        if ($newStatus === 'en_attente') {
+            $cap = self::CAP_EN_ATTENTE_MIN;
+            $current = $this->cumulativeMinutes($stagiaireId, 'en_attente', $excludeId);
+            if ($current + $addingMinutes > $cap) {
+                return "Impossible : ce stagiaire aurait " . $this->fmtH($current + $addingMinutes)
+                     . " en attente, au-delà de la limite de " . $this->fmtH($cap)
+                     . " (actuel : " . $this->fmtH($current) . ", +" . $this->fmtH($addingMinutes) . ").";
+            }
+        }
+        return null;
+    }
+
     public function index(Request $request)
     {
         $query = Absence::with(['stagiaire.user', 'stagiaire.group.filiere', 'module']);
@@ -56,6 +108,36 @@ class AbsenceController extends Controller
             'status' => 'in:non_justifiee,justifiee,en_attente',
         ]);
 
+        if ($validated['heure_debut'] >= $validated['heure_fin']) {
+            return $this->error("L'heure de fin doit être après l'heure de début.", 422);
+        }
+
+        // Prevent overlapping absences for the same stagiaire on the same day —
+        // a student can't be absent twice at the same time. End-exclusive so
+        // back-to-back slots (e.g. 08:30-10:30 + 10:30-12:30) remain valid.
+        // whereDate() strips any time component the DB may have appended via
+        // the model's 'date' cast, so exact-match works under SQLite too.
+        $conflict = Absence::where('stagiaire_id', $validated['stagiaire_id'])
+            ->whereDate('date_absence', $validated['date_absence'])
+            ->where('heure_debut', '<', $validated['heure_fin'])
+            ->where('heure_fin',   '>', $validated['heure_debut'])
+            ->first();
+        if ($conflict) {
+            return $this->error(
+                "Une absence existe déjà pour ce stagiaire le "
+                . \Carbon\Carbon::parse($validated['date_absence'])->format('d/m/Y')
+                . " entre {$conflict->heure_debut} et {$conflict->heure_fin}.",
+                422
+            );
+        }
+
+        // Per-stagiaire cumulative cap per status (32h non-justifiée / 5h en attente).
+        $addingMinutes = $this->minutesOf($validated['heure_debut'], $validated['heure_fin']);
+        $targetStatus = $validated['status'] ?? 'non_justifiee';
+        if ($err = $this->capCheck((int) $validated['stagiaire_id'], $targetStatus, $addingMinutes)) {
+            return $this->error($err, 422);
+        }
+
         $absence = Absence::create($validated);
         $absence->load(['stagiaire.user', 'module']);
 
@@ -87,6 +169,15 @@ class AbsenceController extends Controller
             'justification' => 'nullable|string',
             'motif' => 'nullable|string',
         ]);
+
+        // If status is moving to a capped status, re-check the cumulative without
+        // this absence's current contribution, then add its duration to the new side.
+        if (isset($validated['status']) && $validated['status'] !== $absence->status) {
+            $minutes = $this->minutesOf($absence->heure_debut, $absence->heure_fin);
+            if ($err = $this->capCheck($absence->stagiaire_id, $validated['status'], $minutes, $absence->id)) {
+                return $this->error($err, 422);
+            }
+        }
 
         $absence->update($validated);
 
@@ -222,11 +313,15 @@ class AbsenceController extends Controller
 
     public function warnings()
     {
-        // Thresholds (OFPPT): >= 36h non-justified = warning, >= 54h = suspension risk
+        // OFPPT escalation ladder (non-justified hours):
+        //   15h → 1er engagement
+        //   20h → 2ème engagement
+        //   30h → Conseil de discipline
+        //   32h → plafond absolu (bloqué au niveau store/update)
         $rows = Absence::selectRaw("stagiaire_id, SUM((strftime('%H', heure_fin) * 60 + strftime('%M', heure_fin)) - (strftime('%H', heure_debut) * 60 + strftime('%M', heure_debut))) as mins, COUNT(*) as n")
             ->where('status', 'non_justifiee')
             ->groupBy('stagiaire_id')
-            ->havingRaw('mins >= 2160') // 36h * 60
+            ->havingRaw('mins >= 900') // 15h * 60 = earliest stage (engagement_1)
             ->get();
 
         $ids = $rows->pluck('stagiaire_id');
@@ -239,6 +334,9 @@ class AbsenceController extends Controller
             $s = $stagiaires->get($r->stagiaire_id);
             if (!$s) return null;
             $hours = round($r->mins / 60, 1);
+            if ($hours >= 30)       { $level = 'conseil'; }
+            elseif ($hours >= 20)   { $level = 'engagement_2'; }
+            else                    { $level = 'engagement_1'; }
             return [
                 'stagiaire_id' => $s->id,
                 'nom'          => $s->user->nom ?? '',
@@ -248,7 +346,7 @@ class AbsenceController extends Controller
                 'filiere'      => $s->group->filiere->nom ?? '',
                 'hours'        => $hours,
                 'count'        => $r->n,
-                'level'        => $hours >= 54 ? 'suspension' : 'warning',
+                'level'        => $level,
             ];
         })->filter()->sortByDesc('hours')->values();
 

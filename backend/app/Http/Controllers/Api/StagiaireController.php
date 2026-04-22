@@ -70,6 +70,15 @@ class StagiaireController extends Controller
 
     public function store(Request $request)
     {
+        // Normalize identifiers so "ABC123 " and "abc123" don't sneak past the
+        // unique checks. Email is lowercased; CEF/CNE/CIN are trimmed + uppercased.
+        $request->merge([
+            'email' => mb_strtolower(trim((string) $request->input('email', ''))),
+            'cef'   => mb_strtoupper(trim((string) $request->input('cef', ''))),
+            'cne'   => mb_strtoupper(trim((string) $request->input('cne', ''))),
+            'cin'   => mb_strtoupper(trim((string) $request->input('cin', ''))),
+        ]);
+
         $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
@@ -113,6 +122,7 @@ class StagiaireController extends Controller
                 'date_inscription' => $validated['date_inscription'],
                 'date_naissance' => $validated['date_naissance'],
                 'adresse' => $validated['adresse'] ?? null,
+                'status' => 'actif',
             ]);
         });
 
@@ -243,10 +253,14 @@ class StagiaireController extends Controller
         $created = [];
         $skipped = [];
 
-        $existingEmails = User::pluck('email')->map(fn ($e) => mb_strtolower(trim($e)))->all();
-        $existingCef = Stagiaire::pluck('cef')->map(fn ($c) => mb_strtolower(trim($c)))->all();
-        $existingCne = Stagiaire::pluck('cne')->map(fn ($c) => mb_strtolower(trim($c)))->all();
-        $existingCin = Stagiaire::pluck('cin')->map(fn ($c) => mb_strtolower(trim($c)))->all();
+        // Normalize keys used for dedup: email lower, CEF/CNE/CIN upper.
+        $normEmail = fn ($v) => mb_strtolower(trim((string) $v));
+        $normId    = fn ($v) => mb_strtoupper(trim((string) $v));
+
+        $existingEmails = User::pluck('email')->map($normEmail)->all();
+        $existingCef = Stagiaire::pluck('cef')->map($normId)->all();
+        $existingCne = Stagiaire::pluck('cne')->map($normId)->all();
+        $existingCin = Stagiaire::pluck('cin')->map($normId)->all();
 
         $seenEmails = [];
         $seenCef = [];
@@ -265,10 +279,10 @@ class StagiaireController extends Controller
                     continue;
                 }
 
-                $emailKey = mb_strtolower(trim($row['email']));
-                $cefKey   = mb_strtolower(trim($row['cef']));
-                $cneKey   = mb_strtolower(trim($row['cne']));
-                $cinKey   = mb_strtolower(trim($row['cin']));
+                $emailKey = $normEmail($row['email']);
+                $cefKey   = $normId($row['cef']);
+                $cneKey   = $normId($row['cne']);
+                $cinKey   = $normId($row['cin']);
 
                 if (in_array($emailKey, $seenEmails, true) || in_array($emailKey, $existingEmails, true)) {
                     $skipped[] = ['nom' => "{$row['prenom']} {$row['nom']}", 'reason' => 'email déjà pris'];
@@ -288,23 +302,24 @@ class StagiaireController extends Controller
                 }
 
                 $user = User::create([
-                    'nom'       => $row['nom'],
-                    'prenom'    => $row['prenom'],
-                    'email'     => $row['email'],
+                    'nom'       => trim($row['nom']),
+                    'prenom'    => trim($row['prenom']),
+                    'email'     => $emailKey,
                     'password'  => Hash::make($row['password']),
-                    'telephone' => $row['telephone'] ?? null,
+                    'telephone' => isset($row['telephone']) ? trim($row['telephone']) : null,
                     'role'      => 'stagiaire',
                 ]);
 
                 $stagiaire = Stagiaire::create([
                     'user_id'          => $user->id,
-                    'cef'              => $row['cef'],
-                    'cne'              => $row['cne'],
-                    'cin'              => $row['cin'],
+                    'cef'              => $cefKey,
+                    'cne'              => $cneKey,
+                    'cin'              => $cinKey,
                     'group_id'         => $validated['group_id'],
                     'date_inscription' => now()->format('Y-m-d'),
                     'date_naissance'   => $row['date_naissance'],
-                    'adresse'          => $row['adresse'] ?? null,
+                    'adresse'          => isset($row['adresse']) ? trim($row['adresse']) : null,
+                    'status'           => 'actif',
                 ]);
 
                 $created[] = $stagiaire->id;
@@ -469,9 +484,11 @@ class StagiaireController extends Controller
                 'justified_count'       => $justifiedCount,
                 'unjustified_hours'     => round($unjustifiedHours, 2),
                 'unjustified_count'     => $unjustifiedCount,
-                'max_allowed_hours'     => 72,
-                'warning_threshold'     => 36,
-                'suspension_threshold'  => 54,
+                // OFPPT ladder — thresholds apply to NON-JUSTIFIED hours.
+                'max_allowed_hours'     => 32,   // hard cap, further NJ absences are rejected at store-time
+                'warning_threshold'     => 15,   // 1er engagement
+                'suspension_threshold'  => 20,   // 2eme engagement
+                'conseil_threshold'     => 30,   // Conseil de discipline
             ],
         ]);
     }

@@ -144,18 +144,13 @@ const Sidebar: React.FC = () => {
             title: 'Personnes',
             items: [
               { label: 'Stagiaires', path: '/surveillant/stagiaires', icon: <HiUsers className="h-5 w-5" /> },
-              { label: 'Formateurs', path: '/surveillant/formateurs', icon: <HiAcademicCap className="h-5 w-5" /> },
             ],
           },
           {
             title: 'Académique',
             items: [
               { label: 'Groupes', path: '/surveillant/groupes', icon: <HiUserGroup className="h-5 w-5" /> },
-              { label: 'Salles', path: '/surveillant/salles', icon: <HiOfficeBuilding className="h-5 w-5" /> },
-              { label: 'Modules', path: '/surveillant/modules', icon: <HiDocumentText className="h-5 w-5" /> },
-              { label: 'Filières', path: '/surveillant/filieres', icon: <HiBookOpen className="h-5 w-5" /> },
               { label: 'Emploi du temps', path: '/surveillant/emploi-du-temps', icon: <HiCalendar className="h-5 w-5" /> },
-              { label: 'Examens & Note', path: '/surveillant/examens', icon: <HiClipboardList className="h-5 w-5" /> },
             ],
           },
           {

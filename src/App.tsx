@@ -5,10 +5,12 @@ import { Toaster } from 'react-hot-toast';
 import { store } from './app/store';
 import router from './routes';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { AcademicYearProvider } from './contexts/AcademicYearContext';
 
 const App: React.FC = () => {
   return (
     <ThemeProvider>
+      <AcademicYearProvider>
       <Provider store={store}>
         <RouterProvider router={router} />
         <Toaster
@@ -28,6 +30,7 @@ const App: React.FC = () => {
           }}
         />
       </Provider>
+      </AcademicYearProvider>
     </ThemeProvider>
   );
 };

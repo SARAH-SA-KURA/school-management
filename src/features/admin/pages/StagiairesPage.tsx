@@ -121,9 +121,14 @@ interface StagiaireCsvRow {
   adresse?: string;
 }
 
-const parseStagiairesCsv = (text: string): StagiaireCsvRow[] => {
+interface CsvParseResult {
+  rows: StagiaireCsvRow[];
+  inFileDupes: number;
+}
+
+const parseStagiairesCsv = (text: string): CsvParseResult => {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length === 0) return [];
+  if (lines.length === 0) return { rows: [], inFileDupes: 0 };
 
   const header = lines[0].split(/[,;\t]/).map(h => h.trim().toLowerCase());
   const idx = (name: string) => header.findIndex(h => h === name || h.startsWith(name));
@@ -133,20 +138,39 @@ const parseStagiairesCsv = (text: string): StagiaireCsvRow[] => {
         iDob = idx('date_naissance'), iTel = idx('telephone'), iAdr = idx('adresse');
 
   const rows: StagiaireCsvRow[] = [];
+  // Dedup within the file — matches the backend's normalization so a
+  // client-side preview won't pass rows the server will then reject.
+  const seenEmail = new Set<string>();
+  const seenCef   = new Set<string>();
+  const seenCne   = new Set<string>();
+  const seenCin   = new Set<string>();
+  let inFileDupes = 0;
+
   for (let i = 1; i < lines.length; i++) {
     const parts = lines[i].split(/[,;\t]/).map(s => s.trim());
     const get = (j: number) => (j >= 0 ? (parts[j] || '') : '');
-    const nom = get(iNom), prenom = get(iPrenom), email = get(iEmail),
-          password = get(iPass), cef = get(iCef), cne = get(iCne), cin = get(iCin),
-          dob = get(iDob);
+    const nom = get(iNom), prenom = get(iPrenom);
+    const email = get(iEmail).toLowerCase();
+    const cef = get(iCef).toUpperCase();
+    const cne = get(iCne).toUpperCase();
+    const cin = get(iCin).toUpperCase();
+    const password = get(iPass);
+    const dob = get(iDob);
     if (!nom || !prenom || !email || !password || !cef || !cne || !cin || !dob) continue;
+
+    if (seenEmail.has(email) || seenCef.has(cef) || seenCne.has(cne) || seenCin.has(cin)) {
+      inFileDupes++;
+      continue;
+    }
+    seenEmail.add(email); seenCef.add(cef); seenCne.add(cne); seenCin.add(cin);
+
     rows.push({
       nom, prenom, email, password, cef, cne, cin, date_naissance: dob,
       telephone: get(iTel) || undefined,
       adresse: get(iAdr) || undefined,
     });
   }
-  return rows;
+  return { rows, inFileDupes };
 };
 
 const AvatarCircle: React.FC<{ user: any; size?: string }> = ({ user, size = 'h-14 w-14' }) => {
@@ -427,14 +451,16 @@ const StagiairesPage: React.FC = () => {
 
     setSaving(true);
     try {
+      // Normalize identifiers the same way the backend does, so what the user
+      // sees in the form matches what gets stored and what the unique checks see.
       const payload: any = {
         nom: form.nom.trim(),
         prenom: form.prenom.trim(),
-        email: form.email.trim(),
+        email: form.email.trim().toLowerCase(),
         telephone: form.telephone.trim() || null,
-        cef: form.cef.trim(),
-        cne: form.cne.trim(),
-        cin: form.cin.trim(),
+        cef: form.cef.trim().toUpperCase(),
+        cne: form.cne.trim().toUpperCase(),
+        cin: form.cin.trim().toUpperCase(),
         group_id: Number(form.group_id),
         date_inscription: form.date_inscription,
         date_naissance: form.date_naissance,
@@ -442,6 +468,9 @@ const StagiairesPage: React.FC = () => {
       };
       if (form.password.trim()) payload.password = form.password.trim();
       if (editing) payload.status = form.status;
+      // Explicit default on create so the stagiaire appears "Actif" immediately
+      // in the list after creation (backend also defaults — belt + suspenders).
+      else payload.status = 'actif';
 
       if (editing) {
         await stagiairesApi.update(editing.id, payload);
@@ -489,14 +518,17 @@ const StagiairesPage: React.FC = () => {
   const handleCsvFile = async (file: File) => {
     try {
       const text = await file.text();
-      const parsed = parseStagiairesCsv(text);
-      if (parsed.length === 0) {
+      const { rows, inFileDupes } = parseStagiairesCsv(text);
+      if (rows.length === 0) {
         toast.error('Aucun stagiaire valide trouvé dans le CSV');
         return;
       }
-      setCsvRows(parsed);
+      setCsvRows(rows);
       setCsvFileName(file.name);
-      toast.success(`${parsed.length} ligne(s) détectée(s)`);
+      toast.success(`${rows.length} ligne(s) détectée(s)`);
+      if (inFileDupes > 0) {
+        toast(`${inFileDupes} doublon(s) ignorés dans le fichier (email / CEF / CNE / CIN)`, { icon: 'ℹ️', duration: 5000 });
+      }
     } catch {
       toast.error('Impossible de lire le fichier');
     }

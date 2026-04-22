@@ -95,7 +95,11 @@ const StagiaireEmploiPage: React.FC = () => {
           salle: s.salle || '',
           formateur: s.formateur ? `${s.formateur.prenom} ${s.formateur.nom}` : '',
           type: s.type_seance === 'distanciel' ? 'a_distance' : 'presentiel',
-          jour: toHHMM(s.jour) || s.jour,
+          // IMPORTANT: do NOT pass jour through toHHMM() — it's a 5-char slicer
+          // that mangles day names ("mercredi" -> "mercr"), which then fail to
+          // match the lookup key in getSlotEntries and the row becomes invisible
+          // while still inflating the weekly total.
+          jour: (s.jour || '').toLowerCase(),
           slot: getSlotIndex(toHHMM(s.heures_debut) || s.heures_debut),
         }));
         setEntries(mapped);
@@ -105,6 +109,12 @@ const StagiaireEmploiPage: React.FC = () => {
   }, []);
 
   const weekEntries = useMemo(() => transformForWeek(entries, semaine), [entries, semaine]);
+
+  // Weekly hours — uniform slots are 2h30 each.
+  const weeklyHours = useMemo(() => {
+    const hours = weekEntries.length * 2.5;
+    return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
+  }, [weekEntries]);
 
   const colorMap = useMemo(() => {
     const map = new Map<string, typeof COLOR_SCHEMES[0]>();
@@ -146,6 +156,16 @@ const StagiaireEmploiPage: React.FC = () => {
           >
             {WEEKS.map(w => <option key={w.id} value={w.id}>Semaine : {w.label}</option>)}
           </select>
+          <span
+            className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+              weekEntries.length === 0
+                ? 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                : 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 border-primary-200 dark:border-primary-800'
+            }`}
+            title={`${weekEntries.length} séance${weekEntries.length > 1 ? 's' : ''} cette semaine`}
+          >
+            Total hebdomadaire : <strong className="font-semibold">{weeklyHours}</strong>
+          </span>
         </div>
 
         {/* Timetable grid */}

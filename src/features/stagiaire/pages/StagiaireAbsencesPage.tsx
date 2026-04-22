@@ -21,9 +21,10 @@ interface AbsenceStats {
   justified_count: number;
   unjustified_hours: number;
   unjustified_count: number;
-  max_allowed_hours: number;
-  warning_threshold: number;
-  suspension_threshold: number;
+  max_allowed_hours: number;       // 32 — hard cap
+  warning_threshold: number;        // 15 — 1er engagement
+  suspension_threshold: number;     // 20 — 2eme engagement
+  conseil_threshold?: number;       // 30 — Conseil de discipline
 }
 
 const StagiaireAbsencesPage: React.FC = () => {
@@ -55,9 +56,11 @@ const StagiaireAbsencesPage: React.FC = () => {
     return date.toLocaleDateString('fr-FR');
   };
 
+  // The bar tracks NON-JUSTIFIED hours against the hard cap — only unjustified
+  // absences count toward the OFPPT ladder (engagement → Conseil).
   const getAbsencePercentage = () => {
     if (!stats) return 0;
-    return Math.min(100, (stats.total_absences_hours / stats.max_allowed_hours) * 100);
+    return Math.min(100, (stats.unjustified_hours / stats.max_allowed_hours) * 100);
   };
 
   if (loading) {
@@ -105,18 +108,33 @@ const StagiaireAbsencesPage: React.FC = () => {
         <div className={`rounded-2xl border p-5 mb-6 ${isDark ? 'bg-[#1a1a22] border-[#2a2a35]' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between mb-2">
             <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Heures non justifiees</h3>
-            <span className={`text-sm ${isDark ? 'text-[#6e6e82]' : 'text-gray-500'}`}>{stats.total_absences_hours.toFixed(1)}h / {stats.max_allowed_hours}h max</span>
+            <span className={`text-sm ${isDark ? 'text-[#6e6e82]' : 'text-gray-500'}`}>{stats.unjustified_hours.toFixed(1)}h / {stats.max_allowed_hours}h max</span>
           </div>
-          <div className={`relative w-full h-3 rounded-full overflow-visible mb-6 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-            <div className={`h-full rounded-full ${isDark ? 'bg-gradient-to-r from-blue-500 to-indigo-500' : 'bg-gradient-to-r from-primary-600 to-primary-400'}`} style={{ width: `${getAbsencePercentage()}%` }} />
-            <div className={`absolute top-full mt-1 text-xs ${isDark ? 'text-[#5c5c6e]' : 'text-gray-400'}`} style={{ left: 0 }}>0h</div>
-            <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-yellow-400/60' : 'bg-yellow-400'}`} style={{ left: `${(stats.warning_threshold / stats.max_allowed_hours) * 100}%` }} />
-            <div className={`absolute top-full mt-1 text-xs ${isDark ? 'text-yellow-400/70' : 'text-yellow-600'}`} style={{ left: `${(stats.warning_threshold / stats.max_allowed_hours) * 100}%`, transform: 'translateX(-50%)' }}>{stats.warning_threshold}h 1er engagement</div>
-            <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-orange-400/60' : 'bg-orange-400'}`} style={{ left: `${(stats.suspension_threshold / stats.max_allowed_hours) * 100}%` }} />
-            <div className={`absolute top-full mt-3 text-xs ${isDark ? 'text-orange-400/70' : 'text-orange-600'}`} style={{ left: `${(stats.suspension_threshold / stats.max_allowed_hours) * 100}%`, transform: 'translateX(-50%)' }}>{stats.suspension_threshold}h 2eme engagement</div>
-            <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-red-400/60' : 'bg-red-500'}`} style={{ left: '100%' }} />
-            <div className={`absolute top-full mt-1 text-xs ${isDark ? 'text-[#cf6b6b]/70' : 'text-red-600'}`} style={{ right: 0 }}>{stats.max_allowed_hours}h Conseil</div>
-          </div>
+          {(() => {
+            const cap = stats.max_allowed_hours;
+            const t1 = stats.warning_threshold;
+            const t2 = stats.suspension_threshold;
+            const t3 = stats.conseil_threshold ?? 30;
+            const pct = (v: number) => (v / cap) * 100;
+            return (
+              <div className={`relative w-full h-3 rounded-full overflow-visible mb-10 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
+                <div className={`h-full rounded-full ${isDark ? 'bg-gradient-to-r from-blue-500 to-indigo-500' : 'bg-gradient-to-r from-primary-600 to-primary-400'}`} style={{ width: `${getAbsencePercentage()}%` }} />
+                <div className={`absolute top-full mt-1 text-xs ${isDark ? 'text-[#5c5c6e]' : 'text-gray-400'}`} style={{ left: 0 }}>0h</div>
+                {/* 1er engagement */}
+                <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-yellow-400/60' : 'bg-yellow-400'}`} style={{ left: `${pct(t1)}%` }} />
+                <div className={`absolute top-full mt-1 text-xs ${isDark ? 'text-yellow-400/70' : 'text-yellow-600'}`} style={{ left: `${pct(t1)}%`, transform: 'translateX(-50%)' }}>{t1}h 1er engagement</div>
+                {/* 2eme engagement */}
+                <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-orange-400/60' : 'bg-orange-400'}`} style={{ left: `${pct(t2)}%` }} />
+                <div className={`absolute top-full mt-4 text-xs ${isDark ? 'text-orange-400/70' : 'text-orange-600'}`} style={{ left: `${pct(t2)}%`, transform: 'translateX(-50%)' }}>{t2}h 2eme engagement</div>
+                {/* Conseil */}
+                <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-red-400/80' : 'bg-red-500'}`} style={{ left: `${pct(t3)}%` }} />
+                <div className={`absolute top-full mt-1 text-xs font-medium ${isDark ? 'text-[#cf6b6b]' : 'text-red-600'}`} style={{ left: `${pct(t3)}%`, transform: 'translateX(-50%)' }}>{t3}h Conseil</div>
+                {/* Plafond (hard cap) */}
+                <div className={`absolute top-0 bottom-0 w-0.5 ${isDark ? 'bg-red-500' : 'bg-red-700'}`} style={{ left: '100%' }} />
+                <div className={`absolute top-full mt-4 text-xs font-semibold ${isDark ? 'text-[#cf6b6b]' : 'text-red-700'}`} style={{ right: 0 }}>{cap}h plafond</div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

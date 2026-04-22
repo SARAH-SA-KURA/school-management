@@ -2,16 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotifications, AppNotification } from '../../hooks/useNotifications';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAcademicYear } from '../../contexts/AcademicYearContext';
 import { HiBell, HiChevronDown, HiLogout, HiCog, HiUser, HiSearch, HiSun, HiMoon } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
 
-const ACADEMIC_YEARS = [
-  '2021 / 2022',
-  '2022 / 2023',
-  '2023 / 2024',
-  '2024 / 2025',
-  '2025 / 2026',
-];
+// Display helper: store "2025-2026" internally, show "2025 / 2026" in UI.
+const yearLabel = (y: string) => y.replace('-', ' / ');
 
 // Routes registered per role. `adminOnly: true` = only directeur (e.g. Utilisateurs).
 const SEARCH_PAGES: { label: string; keywords: string[]; slug: string; adminOnly?: boolean }[] = [
@@ -90,7 +86,7 @@ const Header: React.FC = () => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [yearOpen, setYearOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [selectedYear, setSelectedYear] = useState('2024 / 2025');
+  const { year: selectedYear, setYear: setSelectedYear, availableYears } = useAcademicYear();
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -177,15 +173,15 @@ const Header: React.FC = () => {
               className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <HiCog className="h-4 w-4 text-gray-400" />
-              <span>Année Scolaire : {selectedYear}</span>
+              <span>Année Scolaire : {yearLabel(selectedYear)}</span>
               <HiChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${yearOpen ? 'rotate-180' : ''}`} />
             </button>
             {yearOpen && (
               <div className="absolute right-0 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1">
-                {ACADEMIC_YEARS.map(year => (
+                {availableYears.map(year => (
                   <button key={year} onClick={() => { setSelectedYear(year); setYearOpen(false); }}
                     className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 ${selectedYear === year ? 'text-primary-600 dark:text-primary-400 font-medium bg-primary-50 dark:bg-primary-900/30' : 'text-gray-700 dark:text-gray-200'}`}>
-                    {year}
+                    {yearLabel(year)}
                   </button>
                 ))}
               </div>

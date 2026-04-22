@@ -47,8 +47,14 @@ interface Warning {
   filiere: string;
   hours: number;
   count: number;
-  level: 'warning' | 'suspension';
+  level: 'engagement_1' | 'engagement_2' | 'conseil';
 }
+
+const LEVEL_META: Record<'engagement_1' | 'engagement_2' | 'conseil', { label: string; cls: string }> = {
+  engagement_1: { label: '1er engagement',       cls: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
+  engagement_2: { label: '2ème engagement',      cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
+  conseil:      { label: 'Conseil de discipline', cls: 'bg-red-600 text-white' },
+};
 
 const AbsencesPage: React.FC = () => {
   const basePath = useRolePath();
@@ -434,7 +440,7 @@ const AbsencesPage: React.FC = () => {
                   {warnings.length} stagiaire{warnings.length > 1 ? 's' : ''} en zone d'alerte
                 </h3>
                 <p className="text-xs text-red-600/70 dark:text-red-400/70">
-                  Seuil OFPPT : 36h = avertissement · 54h = risque de suspension
+                  Seuils OFPPT : 15h = 1er engagement · 20h = 2ème engagement · 30h = Conseil · 32h = plafond
                 </p>
               </div>
             </div>
@@ -468,12 +474,8 @@ const AbsencesPage: React.FC = () => {
                       <td className="px-4 py-2 text-right font-semibold text-red-700 dark:text-red-300">{w.hours}h</td>
                       <td className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">{w.count}</td>
                       <td className="px-4 py-2">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                          w.level === 'suspension'
-                            ? 'bg-red-600 text-white'
-                            : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
-                        }`}>
-                          {w.level === 'suspension' ? 'Risque de suspension' : 'Avertissement'}
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${LEVEL_META[w.level].cls}`}>
+                          {LEVEL_META[w.level].label}
                         </span>
                       </td>
                     </tr>

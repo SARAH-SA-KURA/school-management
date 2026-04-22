@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom';
 import { groupsApi, dropdownApi } from '../../../api/crudApi';
 import { Group, TableColumn, SelectOption } from '../../../types';
 import { DataTable, Modal, Button, Input, Select, ConfirmDialog } from '../../../components/ui';
-import { HiSortAscending, HiPlus, HiPencil, HiTrash, HiDotsHorizontal, HiUserGroup } from 'react-icons/hi';
+import { HiSortAscending, HiPlus, HiPencil, HiTrash, HiDotsHorizontal, HiUserGroup, HiX } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../../hooks/useDebounce';
 import { useRolePath } from '../../../hooks/useRolePath';
 import { useAuth } from '../../../hooks/useAuth';
+import { useAcademicYear, computeCurrentAcademicYear } from '../../../contexts/AcademicYearContext';
 
 const ANNEE_OPTIONS: SelectOption[] = [
   { value: '1', label: '1ère année' },
@@ -31,17 +32,11 @@ interface GroupFormState {
   is_active: string;
 }
 
-const currentSchoolYear = () => {
-  const y = new Date().getFullYear();
-  const m = new Date().getMonth();
-  return m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-};
-
 const emptyForm: GroupFormState = {
   nom: '',
   filiere_id: '',
   annee: '1',
-  annee_scolaire: currentSchoolYear(),
+  annee_scolaire: computeCurrentAcademicYear(),
   max_stagiaires: 30,
   is_active: 'true',
 };
@@ -50,6 +45,7 @@ const GroupesPage: React.FC = () => {
   const basePath = useRolePath();
   const { user } = useAuth();
   const canWrite = user?.role === 'surveillant';
+  const { year: contextYear } = useAcademicYear();
 
   const [data, setData] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,18 +65,34 @@ const GroupesPage: React.FC = () => {
   const [filiereOptions, setFiliereOptions] = useState<FiliereOption[]>([]);
   const debouncedSearch = useDebounce(search);
 
+  // Filter bar state — année scolaire comes from the header context.
+  const [filterFiliere, setFilterFiliere] = useState('');
+  const [filterAnnee, setFilterAnnee] = useState('');
+  const [filterStatut, setFilterStatut] = useState('');
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await groupsApi.getAll({ page, search: debouncedSearch, per_page: perPage, sort_by: 'nom', sort_dir: sortDir });
+      const params: any = {
+        page, search: debouncedSearch, per_page: perPage,
+        sort_by: 'nom', sort_dir: sortDir,
+        annee_scolaire: contextYear,
+      };
+      if (filterFiliere) params.filiere_id = filterFiliere;
+      if (filterAnnee) params.annee = filterAnnee;
+      if (filterStatut !== '') params.is_active = filterStatut;
+      const res = await groupsApi.getAll(params);
       setData(res.data.data);
       setTotalPages(res.data.meta.last_page);
       setTotalItems(res.data.meta.total);
     } catch { toast.error('Erreur de chargement'); }
     setLoading(false);
-  }, [page, debouncedSearch, perPage, sortDir]);
+  }, [page, debouncedSearch, perPage, sortDir, contextYear, filterFiliere, filterAnnee, filterStatut]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [filterFiliere, filterAnnee, filterStatut, contextYear]);
 
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
@@ -89,21 +101,20 @@ const GroupesPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!canWrite) return;
     dropdownApi.filieres()
       .then(res => {
         const list: any[] = res.data?.data || [];
         setFiliereOptions(list.map(f => ({ id: f.id, code: f.code, nom: f.nom })));
       })
       .catch(() => {});
-  }, [canWrite, formOpen]);
+  }, []);
 
   const handlePerPageChange = (newPerPage: number) => { setPerPage(newPerPage); setPage(1); };
   const toggleSort = () => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setPage(1); };
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm, annee_scolaire: currentSchoolYear() });
+    setForm({ ...emptyForm, annee_scolaire: contextYear });
     setFormOpen(true);
   };
 
@@ -114,7 +125,7 @@ const GroupesPage: React.FC = () => {
       nom: g.nom || '',
       filiere_id: String(anyG.filiere_id || anyG.filiere?.id || ''),
       annee: String(anyG.annee || 1),
-      annee_scolaire: anyG.annee_scolaire || currentSchoolYear(),
+      annee_scolaire: anyG.annee_scolaire || contextYear,
       max_stagiaires: anyG.max_stagiaires ?? 30,
       is_active: anyG.is_active === false ? 'false' : 'true',
     });
@@ -195,7 +206,6 @@ const GroupesPage: React.FC = () => {
     },
     { key: 'filiere', label: 'Filière', sortable: true, render: (item) => item.filiere?.nom || '-' },
     { key: 'annee', label: 'Année', sortable: true, render: (item: any) => `${item.annee}ère` },
-    { key: 'annee_scolaire', label: 'Année scolaire', sortable: true, render: (item: any) => item.annee_scolaire },
     {
       key: 'stagiaires_count',
       label: 'N. Stagiaire',
@@ -265,6 +275,43 @@ const GroupesPage: React.FC = () => {
             <HiPlus className="h-4 w-4" /> Ajouter Groupe
           </button>
         )}
+      </div>
+
+      {/* Filter bar — année scolaire lives in the header, not here */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+            Filtres <span className="text-xs font-normal text-gray-400 ml-1">· Année {contextYear}</span>
+          </h3>
+          {(filterFiliere || filterAnnee || filterStatut) && (
+            <button
+              onClick={() => { setFilterFiliere(''); setFilterAnnee(''); setFilterStatut(''); }}
+              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-red-600"
+            >
+              <HiX className="h-3.5 w-3.5" /> Tout effacer
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Select
+            label="Filière"
+            value={filterFiliere}
+            onChange={e => setFilterFiliere(e.target.value)}
+            options={[{ value: '', label: 'Toutes' }, ...filiereSelectOptions]}
+          />
+          <Select
+            label="Année"
+            value={filterAnnee}
+            onChange={e => setFilterAnnee(e.target.value)}
+            options={[{ value: '', label: 'Toutes' }, ...ANNEE_OPTIONS]}
+          />
+          <Select
+            label="Statut"
+            value={filterStatut}
+            onChange={e => setFilterStatut(e.target.value)}
+            options={[{ value: '', label: 'Tous' }, ...STATUT_OPTIONS]}
+          />
+        </div>
       </div>
 
       <DataTable
