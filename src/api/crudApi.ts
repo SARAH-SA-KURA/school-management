@@ -56,6 +56,7 @@ export const absencesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  getSummary: (params?: QueryParams) => axiosInstance.get('/absences/summary', { params }),
 };
 
 // Special endpoints
@@ -71,6 +72,12 @@ export const notesApi = {
 export const gradesApi = {
   getByGroupModule: (group_id: number, module_id: number) =>
     axiosInstance.get('/grades', { params: { group_id, module_id } }),
+  groupModulesStatus: (group_id: number) =>
+    axiosInstance.get('/notes/group-modules-status', { params: { group_id } }),
+  validate: (group_id: number, module_id: number) =>
+    axiosInstance.post('/notes/validate', { group_id, module_id }),
+  unvalidate: (group_id: number, module_id: number) =>
+    axiosInstance.post('/notes/unvalidate', { group_id, module_id }),
 };
 
 // Dropdown data (all active, no pagination)

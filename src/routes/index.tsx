@@ -48,6 +48,7 @@ import SurveillantSallesPage from '../features/surveillant/pages/SurveillantSall
 import SurveillantModulesPage from '../features/surveillant/pages/SurveillantModulesPage';
 import SurveillantFilieresPage from '../features/surveillant/pages/SurveillantFilieresPage';
 import SurveillantAbsencesPage from '../features/surveillant/pages/SurveillantAbsencesPage';
+import SurveillantAbsenceDetailPage from '../features/surveillant/pages/SurveillantAbsenceDetailPage';
 
 import NotFoundPage from '../pages/NotFoundPage';
 import UnauthorizedPage from '../pages/UnauthorizedPage';
@@ -123,6 +124,7 @@ const router = createBrowserRouter([
       { path: '/surveillant/emploi-du-temps', element: <SurveillantEmploiPage /> },
       { path: '/surveillant/examens', element: <SurveillantExamensPage /> },
       { path: '/surveillant/absences', element: <SurveillantAbsencesPage /> },
+      { path: '/surveillant/absences/:stagiaireId', element: <SurveillantAbsenceDetailPage /> },
       { path: '/surveillant/parametres', element: <ParametresPage /> },
     ],
   },

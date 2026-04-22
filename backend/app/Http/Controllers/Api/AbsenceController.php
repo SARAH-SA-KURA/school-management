@@ -145,6 +145,81 @@ class AbsenceController extends Controller
         ]);
     }
 
+    public function summary(Request $request)
+    {
+        $mins = "((strftime('%H', heure_fin) * 60 + strftime('%M', heure_fin)) - (strftime('%H', heure_debut) * 60 + strftime('%M', heure_debut)))";
+
+        $query = Absence::selectRaw("
+            stagiaire_id,
+            COUNT(*) as total_count,
+            SUM({$mins}) as total_mins,
+            SUM(CASE WHEN status = 'justifiee'     THEN {$mins} ELSE 0 END) as justified_mins,
+            SUM(CASE WHEN status = 'non_justifiee' THEN {$mins} ELSE 0 END) as nonj_mins,
+            SUM(CASE WHEN status = 'en_attente'    THEN {$mins} ELSE 0 END) as attente_mins
+        ");
+
+        if ($request->filled('date_from')) $query->where('date_absence', '>=', $request->date_from);
+        if ($request->filled('date_to'))   $query->where('date_absence', '<=', $request->date_to);
+        if ($request->filled('group_id'))   $query->whereHas('stagiaire', fn ($q) => $q->where('group_id', $request->group_id));
+        if ($request->filled('filiere_id')) $query->whereHas('stagiaire.group', fn ($q) => $q->where('filiere_id', $request->filiere_id));
+        if ($request->filled('stagiaire_id')) $query->where('stagiaire_id', $request->stagiaire_id);
+
+        $aggregates = $query->groupBy('stagiaire_id')->get()->keyBy('stagiaire_id');
+
+        $stagiaires = \App\Models\Stagiaire::with([
+                'user:id,nom,prenom',
+                'group:id,nom,filiere_id',
+                'group.filiere:id,nom',
+            ])
+            ->whereIn('id', $aggregates->keys())
+            ->get();
+
+        $rows = $stagiaires->map(function ($s) use ($aggregates) {
+            $a = $aggregates->get($s->id);
+            return [
+                'stagiaire_id'         => $s->id,
+                'cef'                  => $s->cef,
+                'nom'                  => $s->user->nom ?? '',
+                'prenom'               => $s->user->prenom ?? '',
+                'group'                => $s->group->nom ?? '',
+                'group_id'             => $s->group_id,
+                'filiere'              => $s->group->filiere->nom ?? '',
+                'filiere_id'           => $s->group->filiere_id ?? null,
+                'total_hours'          => round(((float) ($a->total_mins     ?? 0)) / 60, 1),
+                'justified_hours'      => round(((float) ($a->justified_mins ?? 0)) / 60, 1),
+                'non_justified_hours'  => round(((float) ($a->nonj_mins      ?? 0)) / 60, 1),
+                'en_attente_hours'     => round(((float) ($a->attente_mins   ?? 0)) / 60, 1),
+                'total_count'          => (int) ($a->total_count ?? 0),
+            ];
+        });
+
+        if ($search = trim((string) $request->input('search'))) {
+            $needle = mb_strtolower($search);
+            $rows = $rows->filter(function ($r) use ($needle) {
+                return str_contains(mb_strtolower($r['nom'] . ' ' . $r['prenom']), $needle)
+                    || str_contains(mb_strtolower((string) $r['cef']), $needle);
+            });
+        }
+
+        $rows = $rows->sortByDesc('total_hours')->values();
+
+        $perPage = max(1, (int) $request->input('per_page', 15));
+        $page    = max(1, (int) $request->input('page', 1));
+        $total   = $rows->count();
+        $items   = $rows->slice(($page - 1) * $perPage, $perPage)->values();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $items,
+            'meta'    => [
+                'current_page' => $page,
+                'last_page'    => (int) max(1, ceil($total / $perPage)),
+                'per_page'     => $perPage,
+                'total'        => $total,
+            ],
+        ]);
+    }
+
     public function warnings()
     {
         // Thresholds (OFPPT): >= 36h non-justified = warning, >= 54h = suspension risk

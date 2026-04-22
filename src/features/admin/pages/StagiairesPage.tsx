@@ -6,8 +6,9 @@ import { DataTable, Modal, Button, Input, Select, ConfirmDialog } from '../../..
 import {
   HiSortAscending, HiX, HiMail, HiPhone, HiLocationMarker, HiCalendar,
   HiIdentification, HiAcademicCap, HiUserGroup, HiPlus, HiPencil, HiTrash,
-  HiDotsHorizontal, HiUpload,
+  HiDotsHorizontal, HiUpload, HiPrinter, HiFilter, HiDownload,
 } from 'react-icons/hi';
+import * as XLSX from 'xlsx';
 import { formatDate } from '../../../utils/formatters';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../../hooks/useDebounce';
@@ -35,6 +36,49 @@ const STATUS_OPTIONS: SelectOption[] = [
 ];
 
 interface GroupOption { id: number; nom: string; filiere_id?: number; filiere?: { nom?: string } }
+interface FiliereOption { id: number; nom: string; code?: string }
+
+const escapeHtml = (str: any): string =>
+  String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// Column definitions for the export/print picker. Each column knows how to
+// pull its value from a stagiaire row — used by both the print HTML and the
+// Excel export so the two stay consistent.
+type ExportColKey =
+  | 'cef' | 'cne' | 'cin'
+  | 'prenom' | 'nom' | 'email' | 'telephone'
+  | 'date_naissance' | 'adresse'
+  | 'groupe' | 'filiere'
+  | 'date_inscription' | 'statut';
+
+interface ExportColDef {
+  key: ExportColKey;
+  label: string;
+  accessor: (r: any) => string;
+}
+
+const EXPORT_COLUMNS: ExportColDef[] = [
+  { key: 'cef',              label: 'CEF',              accessor: r => r.cef || '' },
+  { key: 'cne',              label: 'CNE',              accessor: r => r.cne || '' },
+  { key: 'cin',              label: 'CIN',              accessor: r => r.cin || '' },
+  { key: 'prenom',           label: 'Prénom',           accessor: r => r.user?.prenom || '' },
+  { key: 'nom',              label: 'Nom',              accessor: r => r.user?.nom || '' },
+  { key: 'email',            label: 'Email',            accessor: r => r.user?.email || '' },
+  { key: 'telephone',        label: 'Téléphone',        accessor: r => r.user?.telephone || '' },
+  { key: 'date_naissance',   label: 'Date de naissance', accessor: r => r.date_naissance ? String(r.date_naissance).slice(0, 10) : '' },
+  { key: 'adresse',          label: 'Adresse',          accessor: r => r.adresse || '' },
+  { key: 'groupe',           label: 'Groupe',           accessor: r => r.group?.nom || '' },
+  { key: 'filiere',          label: 'Filière',          accessor: r => r.group?.filiere?.nom || '' },
+  { key: 'date_inscription', label: 'Date d\'inscription', accessor: r => r.date_inscription ? String(r.date_inscription).slice(0, 10) : '' },
+  { key: 'statut',           label: 'Statut',           accessor: r => r.status || '' },
+];
+
+const DEFAULT_EXPORT_COLS: ExportColKey[] = ['cef', 'prenom', 'nom', 'telephone', 'groupe', 'filiere'];
 
 interface StagiaireFormState {
   nom: string;
@@ -232,6 +276,15 @@ const StagiairesPage: React.FC = () => {
   const [form, setForm] = useState<StagiaireFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [groupOptions, setGroupOptions] = useState<GroupOption[]>([]);
+  const [filiereOptions, setFiliereOptions] = useState<FiliereOption[]>([]);
+  const [filiereFilter, setFiliereFilter] = useState('');
+  const [groupFilter, setGroupFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  // Column-picker modal: one UI, two actions (print or xlsx export).
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'print' | 'excel'>('print');
+  const [pickerCols, setPickerCols] = useState<Set<ExportColKey>>(new Set(DEFAULT_EXPORT_COLS));
+  const [pickerBusy, setPickerBusy] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [csvGroupId, setCsvGroupId] = useState('');
   const [csvRows, setCsvRows] = useState<StagiaireCsvRow[]>([]);
@@ -240,11 +293,27 @@ const StagiairesPage: React.FC = () => {
   const csvInputRef = useRef<HTMLInputElement>(null);
   const debouncedSearch = useDebounce(search);
 
+  const buildFilterParams = useCallback(() => {
+    const params: any = {};
+    if (debouncedSearch) params.search = debouncedSearch;
+    // URL param takes precedence over the dropdown selection
+    const effectiveGroupId = groupIdParam || groupFilter;
+    if (effectiveGroupId) params.group_id = effectiveGroupId;
+    if (filiereFilter) params.filiere_id = filiereFilter;
+    if (statusFilter) params.status = statusFilter;
+    return params;
+  }, [debouncedSearch, groupIdParam, groupFilter, filiereFilter, statusFilter]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, search: debouncedSearch, per_page: perPage, sort_by: 'nom', sort_dir: sortDir };
-      if (groupIdParam) params.group_id = groupIdParam;
+      const params: any = {
+        ...buildFilterParams(),
+        page,
+        per_page: perPage,
+        sort_by: 'nom',
+        sort_dir: sortDir,
+      };
       const res = await stagiairesApi.getAll(params);
       setData(res.data.data);
       setTotalPages(res.data.meta.last_page);
@@ -253,10 +322,10 @@ const StagiairesPage: React.FC = () => {
       toast.error('Erreur de chargement');
     }
     setLoading(false);
-  }, [page, debouncedSearch, perPage, sortDir, groupIdParam]);
+  }, [page, perPage, sortDir, buildFilterParams]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { setPage(1); }, [groupIdParam]);
+  useEffect(() => { setPage(1); }, [groupIdParam, filiereFilter, groupFilter, statusFilter, debouncedSearch]);
 
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
@@ -264,15 +333,21 @@ const StagiairesPage: React.FC = () => {
     return () => document.removeEventListener('click', handler);
   }, []);
 
+  // Load filières + groups for everyone (filter dropdowns need them, not just Surveillant)
   useEffect(() => {
-    if (!canWrite) return;
     dropdownApi.groups()
       .then(res => {
         const list: any[] = res.data?.data || [];
         setGroupOptions(list.map(g => ({ id: g.id, nom: g.nom, filiere_id: g.filiere_id, filiere: g.filiere })));
       })
       .catch(() => {});
-  }, [canWrite, formOpen, csvOpen]);
+    dropdownApi.filieres()
+      .then(res => {
+        const list: any[] = res.data?.data || [];
+        setFiliereOptions(list.map((f: any) => ({ id: f.id, nom: f.nom, code: f.code })));
+      })
+      .catch(() => {});
+  }, []);
 
   const handlePerPageChange = (newPerPage: number) => { setPerPage(newPerPage); setPage(1); };
   const toggleSort = () => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setPage(1); };
@@ -293,6 +368,27 @@ const StagiairesPage: React.FC = () => {
     setForm({ ...emptyForm, date_inscription: today() });
     setFormOpen(true);
   };
+
+  // URL-triggered create/edit — entry point for adding a Stagiaire can also
+  // come from /admin/utilisateurs (the single add-user UX hands off here).
+  useEffect(() => {
+    const createFlag = searchParams.get('create');
+    const editId     = searchParams.get('edit');
+    if (createFlag === '1') {
+      openCreate();
+      searchParams.delete('create');
+      setSearchParams(searchParams, { replace: true });
+    } else if (editId) {
+      stagiairesApi.getById(Number(editId))
+        .then(res => {
+          openEdit(res.data.data as Stagiaire);
+          searchParams.delete('edit');
+          setSearchParams(searchParams, { replace: true });
+        })
+        .catch(() => toast.error('Stagiaire introuvable'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const openEdit = (s: Stagiaire) => {
     setEditing(s);
@@ -431,10 +527,176 @@ const StagiairesPage: React.FC = () => {
     setCsvImporting(false);
   };
 
-  const groupSelectOptions: SelectOption[] = groupOptions.map(g => ({
-    value: String(g.id),
-    label: g.filiere?.nom ? `${g.nom} — ${g.filiere.nom}` : g.nom,
-  }));
+  const groupSelectOptions: SelectOption[] = groupOptions.map(g => {
+    const filiereName = g.filiere?.nom ?? filiereOptions.find(f => f.id === g.filiere_id)?.nom;
+    return {
+      value: String(g.id),
+      label: filiereName ? `${g.nom} — ${filiereName}` : g.nom,
+    };
+  });
+
+  // Groups filtered by selected filière (cascade)
+  const filteredGroupsForFilter = filiereFilter
+    ? groupOptions.filter(g => String(g.filiere_id) === filiereFilter)
+    : groupOptions;
+
+  const resetFilters = () => {
+    setFiliereFilter('');
+    setGroupFilter('');
+    setStatusFilter('');
+  };
+
+  const hasActiveFilters = !!(filiereFilter || groupFilter || statusFilter || groupIdParam);
+
+  const openPicker = (mode: 'print' | 'excel') => {
+    setPickerMode(mode);
+    // Reset to sensible default every time so the list doesn't stay skewed by
+    // the last session's picks.
+    setPickerCols(new Set(DEFAULT_EXPORT_COLS));
+    setPickerOpen(true);
+  };
+
+  const togglePickerCol = (key: ExportColKey) => {
+    setPickerCols(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const fetchFilteredRows = async (): Promise<any[]> => {
+    const params: any = {
+      ...buildFilterParams(),
+      per_page: 10000,
+      sort_by: 'nom',
+      sort_dir: sortDir,
+    };
+    const res = await stagiairesApi.getAll(params);
+    return res.data.data || [];
+  };
+
+  const getFiltersSummary = (): string => ([
+    filiereFilter && `Filière : ${filiereOptions.find(f => String(f.id) === filiereFilter)?.nom ?? ''}`,
+    (groupIdParam || groupFilter) && `Groupe : ${groupOptions.find(g => String(g.id) === (groupIdParam || groupFilter))?.nom ?? ''}`,
+    statusFilter && `Statut : ${statusConfig[statusFilter]?.label ?? statusFilter}`,
+    debouncedSearch && `Recherche : « ${debouncedSearch} »`,
+  ].filter(Boolean).join(' • ') || 'Aucun filtre');
+
+  // Ordered list of selected columns (respecting EXPORT_COLUMNS order, not
+  // the order the user clicked the checkboxes).
+  const orderedSelectedCols = (): ExportColDef[] =>
+    EXPORT_COLUMNS.filter(c => pickerCols.has(c.key));
+
+  const handlePickerConfirm = async () => {
+    if (pickerCols.size === 0) {
+      toast.error('Sélectionnez au moins une colonne');
+      return;
+    }
+    setPickerBusy(true);
+    try {
+      const rows = await fetchFilteredRows();
+      const cols = orderedSelectedCols();
+
+      if (pickerMode === 'print') {
+        runPrint(rows, cols);
+      } else {
+        runExcelExport(rows, cols);
+      }
+      setPickerOpen(false);
+    } catch {
+      toast.error(pickerMode === 'print'
+        ? 'Erreur lors de la préparation de l\'impression'
+        : 'Erreur lors de l\'export Excel');
+    }
+    setPickerBusy(false);
+  };
+
+  const runPrint = (rows: any[], cols: ExportColDef[]) => {
+    const filtersLabel = getFiltersSummary();
+    const headers = cols.map(c => `<th>${escapeHtml(c.label)}</th>`).join('');
+    const body = rows.map(r => {
+      const tds = cols.map(c => {
+        if (c.key === 'statut') {
+          const st = (r.status || 'actif') as string;
+          const label = statusConfig[st]?.label ?? st;
+          return `<td><span class="st st-${st}">${escapeHtml(label)}</span></td>`;
+        }
+        return `<td>${escapeHtml(c.accessor(r))}</td>`;
+      }).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Liste des stagiaires</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #111827; margin: 0; }
+  h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+  .sub { color: #6b7280; font-size: 11px; margin-bottom: 16px; }
+  .sub b { color: #111827; }
+  table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  thead th { background: #f9fafb; border-bottom: 2px solid #d1d5db; padding: 8px 6px; text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase; color: #374151; letter-spacing: 0.03em; }
+  tbody td { border-bottom: 1px solid #e5e7eb; padding: 7px 6px; vertical-align: middle; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  .st { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 10px; font-weight: 600; }
+  .st-actif    { background: #dcfce7; color: #166534; }
+  .st-abandon  { background: #fee2e2; color: #991b1b; }
+  .st-suspendu { background: #fef3c7; color: #92400e; }
+  .st-diplome  { background: #dbeafe; color: #1e40af; }
+  @media print {
+    body { padding: 12px; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+  }
+</style></head><body>
+<h1>Liste des stagiaires</h1>
+<div class="sub">${escapeHtml(filtersLabel)} &nbsp;•&nbsp; Total : <b>${rows.length}</b> stagiaire(s) &nbsp;•&nbsp; Imprimé le ${escapeHtml(new Date().toLocaleString('fr-FR'))}</div>
+<table>
+  <thead><tr>${headers}</tr></thead>
+  <tbody>${body || `<tr><td colspan="${cols.length}" style="text-align:center;color:#6b7280;padding:24px">Aucun stagiaire trouvé</td></tr>`}</tbody>
+</table>
+<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=1100,height=760');
+    if (!w) {
+      toast.error('Autorisez les pop-ups pour imprimer');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
+  const runExcelExport = (rows: any[], cols: ExportColDef[]) => {
+    const data = rows.map(r => {
+      const obj: Record<string, string> = {};
+      cols.forEach(c => {
+        // Humanise the statut value (same label as the badge shows).
+        if (c.key === 'statut') {
+          const st = r.status || 'actif';
+          obj[c.label] = statusConfig[st]?.label ?? st;
+        } else {
+          obj[c.label] = c.accessor(r);
+        }
+      });
+      return obj;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    // Auto column widths from header + longest cell (capped so it stays usable).
+    ws['!cols'] = cols.map(c => {
+      const headerLen = c.label.length;
+      const maxLen = data.reduce((m, row) => Math.max(m, String(row[c.label] || '').length), 0);
+      return { wch: Math.min(40, Math.max(10, Math.max(headerLen, maxLen) + 2)) };
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Stagiaires');
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fname = `Stagiaires_${stamp}.xlsx`;
+    XLSX.writeFile(wb, fname);
+    toast.success(`${rows.length} stagiaire(s) exporté(s)`);
+  };
 
   const columns: TableColumn<Stagiaire>[] = [
     {
@@ -449,6 +711,25 @@ const StagiairesPage: React.FC = () => {
     { key: 'telephone', label: 'Téléphone', sortable: true, render: (item) => item.user?.telephone || '-' },
     { key: 'group', label: 'Groupe', sortable: true, render: (item) => item.group?.nom || '-' },
     { key: 'filiere', label: 'Filière', render: (item) => item.group?.filiere?.nom || '-' },
+    {
+      key: 'status',
+      label: 'Statut',
+      sortable: true,
+      render: (item) => {
+        const st = statusConfig[(item as any).status] || statusConfig.actif;
+        return (
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.bg} ${st.text} dark:bg-opacity-20`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              (item as any).status === 'actif' ? 'bg-green-500' :
+              (item as any).status === 'abandon' ? 'bg-red-500' :
+              (item as any).status === 'suspendu' ? 'bg-yellow-500' :
+              'bg-blue-500'
+            }`} />
+            {st.label}
+          </span>
+        );
+      },
+    },
     {
       key: 'actions',
       label: 'Action',
@@ -495,22 +776,38 @@ const StagiairesPage: React.FC = () => {
             <span>Stagiaires</span>
           </p>
         </div>
-        {canWrite && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={openCsv}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors"
-            >
-              <HiUpload className="h-4 w-4" /> Import CSV
-            </button>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <HiPlus className="h-4 w-4" /> Ajouter Stagiaire
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => openPicker('print')}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors"
+            title="Imprimer la liste complète (filtres actifs, colonnes au choix)"
+          >
+            <HiPrinter className="h-4 w-4" /> Imprimer
+          </button>
+          <button
+            onClick={() => openPicker('excel')}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors"
+            title="Exporter au format Excel (filtres actifs, colonnes au choix)"
+          >
+            <HiDownload className="h-4 w-4" /> Export Excel
+          </button>
+          {canWrite && (
+            <>
+              <button
+                onClick={openCsv}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors"
+              >
+                <HiUpload className="h-4 w-4" /> Import CSV
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <HiPlus className="h-4 w-4" /> Ajouter Stagiaire
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {groupIdParam && (
@@ -526,6 +823,78 @@ const StagiairesPage: React.FC = () => {
               <HiX className="h-3.5 w-3.5" />
             </button>
           </span>
+        </div>
+      )}
+
+      {/* Filter bar */}
+      {!groupIdParam && (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <HiFilter className="h-4 w-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Filtres</span>
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 flex items-center gap-1"
+              >
+                <HiX className="h-3.5 w-3.5" /> Réinitialiser
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Filière</label>
+              <select
+                value={filiereFilter}
+                onChange={e => {
+                  setFiliereFilter(e.target.value);
+                  setGroupFilter(''); // cascade reset
+                }}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="">Toutes les filières</option>
+                {filiereOptions.map(f => (
+                  <option key={f.id} value={String(f.id)}>
+                    {f.code ? `${f.code} — ${f.nom}` : f.nom}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Groupe {filiereFilter && <span className="text-gray-400 font-normal">(filière sélectionnée)</span>}
+              </label>
+              <select
+                value={groupFilter}
+                onChange={e => setGroupFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="">Tous les groupes</option>
+                {filteredGroupsForFilter.map(g => {
+                  const filiereName = g.filiere?.nom ?? filiereOptions.find(f => f.id === g.filiere_id)?.nom;
+                  return (
+                    <option key={g.id} value={String(g.id)}>
+                      {filiereName ? `${g.nom} — ${filiereName}` : g.nom}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Statut</label>
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="">Tous les statuts</option>
+                <option value="actif">Actif</option>
+                <option value="abandon">Abandon</option>
+                <option value="suspendu">Suspendu</option>
+                <option value="diplome">Diplômé</option>
+              </select>
+            </div>
+          </div>
         </div>
       )}
 
@@ -748,6 +1117,81 @@ const StagiairesPage: React.FC = () => {
         title="Désactiver le stagiaire"
         message={`Désactiver ${(editing as any)?.user?.prenom || ''} ${(editing as any)?.user?.nom || ''} ? Son compte sera suspendu.`}
       />
+
+      {/* Column-picker modal (shared by Imprimer + Export Excel) */}
+      <Modal
+        isOpen={pickerOpen}
+        onClose={() => !pickerBusy && setPickerOpen(false)}
+        title={pickerMode === 'print' ? 'Imprimer la liste' : 'Exporter en Excel'}
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPickerOpen(false)} disabled={pickerBusy}>
+              Annuler
+            </Button>
+            <Button onClick={handlePickerConfirm} loading={pickerBusy}>
+              {pickerMode === 'print' ? 'Imprimer' : 'Exporter'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Choisissez les colonnes à inclure. La liste complète des stagiaires correspondant aux filtres actifs sera {pickerMode === 'print' ? 'imprimée' : 'exportée'}.
+          </p>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Colonnes ({pickerCols.size} / {EXPORT_COLUMNS.length})
+            </span>
+            <div className="flex items-center gap-3 text-xs">
+              <button
+                type="button"
+                onClick={() => setPickerCols(new Set(EXPORT_COLUMNS.map(c => c.key)))}
+                className="text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Tout sélectionner
+              </button>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <button
+                type="button"
+                onClick={() => setPickerCols(new Set())}
+                className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+              >
+                Tout désélectionner
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 border border-gray-200 dark:border-gray-700 rounded-lg p-3 max-h-72 overflow-y-auto">
+            {EXPORT_COLUMNS.map(c => {
+              const checked = pickerCols.has(c.key);
+              return (
+                <label
+                  key={c.key}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-sm transition-colors ${
+                    checked
+                      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => togglePickerCol(c.key)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span>{c.label}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+            Filtres actifs : <span className="text-gray-700 dark:text-gray-300">{getFiltersSummary()}</span>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

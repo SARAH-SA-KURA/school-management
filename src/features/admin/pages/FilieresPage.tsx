@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { filieresApi, dropdownApi } from '../../../api/crudApi';
+import { filieresApi, modulesApi, dropdownApi } from '../../../api/crudApi';
 import { Filiere, TableColumn, SelectOption } from '../../../types';
 import { DataTable, Modal, Button, Input, Select, ConfirmDialog } from '../../../components/ui';
-import { HiSortAscending, HiPlus, HiPencil, HiTrash, HiDotsHorizontal, HiX, HiUpload } from 'react-icons/hi';
+import { HiSortAscending, HiPlus, HiPencil, HiTrash, HiDotsHorizontal, HiSearch, HiBookOpen, HiLockClosed } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../../hooks/useDebounce';
 import { useRolePath } from '../../../hooks/useRolePath';
@@ -16,9 +16,12 @@ const NIVEAU_OPTIONS: SelectOption[] = [
   { value: 'Spécialisation', label: 'Spécialisation' },
 ];
 
-interface ModuleDraft {
+interface ModuleItem {
+  id: number;
   nom: string;
-  heures_total: number | string;
+  code?: string;
+  filiere_id: number | null;
+  filiere?: { id: number; nom: string; code?: string };
 }
 
 const emptyForm = {
@@ -26,22 +29,140 @@ const emptyForm = {
   nom: '',
   niveau: 'Technicien Spécialisé',
   secteur: '',
-  modules: [] as ModuleDraft[],
+  // IDs of modules selected to be attached to this filière after save.
+  // On edit, pre-populated with the filière's currently-attached modules.
+  module_ids: [] as number[],
 };
 
-const parseModulesCsv = (text: string): ModuleDraft[] => {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const out: ModuleDraft[] = [];
-  for (const line of lines) {
-    const parts = line.split(/[,;\t]/).map(s => s.trim());
-    if (parts.length < 2) continue;
-    const [nom, heuresRaw] = parts;
-    if (/^nom/i.test(nom) || /^name/i.test(nom)) continue; // skip header row
-    const heures = parseInt(String(heuresRaw).replace(/[^\d]/g, ''), 10);
-    if (!nom || isNaN(heures)) continue;
-    out.push({ nom, heures_total: heures });
-  }
-  return out;
+interface ModulesPickerProps {
+  loading: boolean;
+  allModules: ModuleItem[];
+  selectedIds: number[];
+  initiallyAttached: Set<number>;
+  editingFiliereId: number | null;
+  editingFiliereNom: string;
+  onToggle: (id: number) => void;
+  search: string;
+  onSearchChange: (s: string) => void;
+}
+
+const ModulesPicker: React.FC<ModulesPickerProps> = ({
+  loading, allModules, selectedIds, initiallyAttached,
+  editingFiliereId, editingFiliereNom, onToggle,
+  search, onSearchChange,
+}) => {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allModules;
+    return allModules.filter(m =>
+      m.nom.toLowerCase().includes(q) || (m.code || '').toLowerCase().includes(q)
+    );
+  }, [allModules, search]);
+
+  // Sort so modules already in this filière float to the top, then modules of
+  // other filières, preserving name order within each group.
+  const ordered = useMemo(() => {
+    const bucket = (m: ModuleItem) =>
+      initiallyAttached.has(m.id) ? 0 : 1;
+    return [...filtered].sort((a, b) => {
+      const ba = bucket(a), bb = bucket(b);
+      if (ba !== bb) return ba - bb;
+      return a.nom.localeCompare(b.nom);
+    });
+  }, [filtered, initiallyAttached]);
+
+  const newAttachCount = selectedIds.filter(id => !initiallyAttached.has(id)).length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Modules rattachés ({selectedIds.length})
+          {newAttachCount > 0 && (
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
+              +{newAttachCount} nouveau(x)
+            </span>
+          )}
+        </label>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+          {allModules.length} module(s) dans le catalogue
+        </span>
+      </div>
+
+      <div className="relative mb-3">
+        <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder="Rechercher un module par nom ou code..."
+          className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder-gray-400"
+        />
+      </div>
+
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700/60">
+        {loading ? (
+          <p className="p-4 text-xs text-gray-400 dark:text-gray-500 text-center">Chargement des modules...</p>
+        ) : ordered.length === 0 ? (
+          <p className="p-4 text-xs text-gray-400 dark:text-gray-500 text-center">
+            {search ? 'Aucun module ne correspond à la recherche' : 'Aucun module disponible'}
+          </p>
+        ) : (
+          ordered.map(m => {
+            const isAttachedHere = initiallyAttached.has(m.id);
+            const isChecked = selectedIds.includes(m.id);
+            const inOtherFiliere = !isAttachedHere && m.filiere_id != null && m.filiere_id !== editingFiliereId;
+
+            return (
+              <label
+                key={m.id}
+                className={`flex items-start gap-3 px-3 py-2.5 transition-colors ${
+                  isAttachedHere
+                    ? 'bg-green-50/60 dark:bg-green-900/10 cursor-not-allowed'
+                    : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  disabled={isAttachedHere}
+                  onChange={() => onToggle(m.id)}
+                  className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 disabled:opacity-60"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{m.nom}</span>
+                    {m.code && (
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">{m.code}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {isAttachedHere ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-green-700 dark:text-green-400">
+                        <HiLockClosed className="h-3 w-3" />
+                        Déjà dans {editingFiliereNom || 'cette filière'}
+                      </span>
+                    ) : inOtherFiliere ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                        <HiBookOpen className="h-3 w-3" />
+                        Actuellement dans {m.filiere?.nom || `filière #${m.filiere_id}`}
+                        {isChecked && ' → sera déplacé ici'}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400">Non attribué</span>
+                    )}
+                  </div>
+                </div>
+              </label>
+            );
+          })
+        )}
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
+        Les modules déjà rattachés sont verrouillés ici. Pour les détacher, ouvrez-les depuis la page Modules.
+      </p>
+    </div>
+  );
 };
 
 const FilieresPage: React.FC = () => {
@@ -64,7 +185,12 @@ const FilieresPage: React.FC = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [secteurSuggestions, setSecteurSuggestions] = useState<string[]>([]);
-  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [allModules, setAllModules] = useState<ModuleItem[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [moduleSearch, setModuleSearch] = useState('');
+  // Snapshot of which modules were attached to this filière when the modal opened.
+  // Used to render "déjà attaché" badge + lock their checkboxes (only ADD flow).
+  const [initiallyAttached, setInitiallyAttached] = useState<Set<number>>(new Set());
   const debouncedSearch = useDebounce(search);
 
   const fetchData = useCallback(async () => {
@@ -99,6 +225,26 @@ const FilieresPage: React.FC = () => {
       .catch(() => {});
   }, [canWrite, formOpen]);
 
+  // Catalog of all modules (across every filière) — source for the picker.
+  // Refreshed each time the modal opens so freshly-added modules appear.
+  useEffect(() => {
+    if (!canWrite || !formOpen) return;
+    setModulesLoading(true);
+    modulesApi.getAll({ per_page: 1000, sort_by: 'nom', sort_dir: 'asc' })
+      .then(res => {
+        const list: any[] = res.data?.data || [];
+        setAllModules(list.map(m => ({
+          id: m.id,
+          nom: m.nom,
+          code: m.code,
+          filiere_id: m.filiere_id ?? m.filiere?.id ?? null,
+          filiere: m.filiere ? { id: m.filiere.id, nom: m.filiere.nom, code: m.filiere.code } : undefined,
+        })));
+      })
+      .catch(() => toast.error('Erreur lors du chargement des modules'))
+      .finally(() => setModulesLoading(false));
+  }, [canWrite, formOpen]);
+
   const handlePerPageChange = (newPerPage: number) => {
     setPerPage(newPerPage);
     setPage(1);
@@ -108,52 +254,48 @@ const FilieresPage: React.FC = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm, modules: [] });
+    setForm({ ...emptyForm, module_ids: [] });
+    setInitiallyAttached(new Set());
+    setModuleSearch('');
     setFormOpen(true);
   };
 
-  const openEdit = (f: Filiere) => {
+  const openEdit = async (f: Filiere) => {
+    setOpenMenuId(null);
+    setModuleSearch('');
     setEditing(f);
+    // Set base form fields immediately so the UI doesn't wait.
     setForm({
       code: f.code || '',
       nom: f.nom || '',
       niveau: (f as any).niveau || 'Technicien Spécialisé',
       secteur: (f as any).secteur || '',
-      modules: [],
+      module_ids: [],
     });
+    setInitiallyAttached(new Set());
     setFormOpen(true);
-    setOpenMenuId(null);
+    // Fetch the detail payload to get the currently-attached modules.
+    try {
+      const res = await filieresApi.getById(f.id);
+      const detail: any = res.data.data;
+      const attachedIds = (detail.modules || []).map((m: any) => m.id);
+      setForm(p => ({ ...p, module_ids: attachedIds }));
+      setInitiallyAttached(new Set(attachedIds));
+    } catch {
+      // Non-fatal — the picker still works, just without pre-checks.
+    }
   };
 
-  const addModuleRow = () => {
-    setForm(p => ({ ...p, modules: [...p.modules, { nom: '', heures_total: 60 }] }));
-  };
-
-  const updateModuleRow = (i: number, patch: Partial<ModuleDraft>) => {
+  const toggleModule = (id: number) => {
+    // Pre-attached modules are locked — unchecking here doesn't detach them.
+    // Directeur must attach them to another filière to move them.
+    if (initiallyAttached.has(id)) return;
     setForm(p => ({
       ...p,
-      modules: p.modules.map((m, idx) => idx === i ? { ...m, ...patch } : m),
+      module_ids: p.module_ids.includes(id)
+        ? p.module_ids.filter(x => x !== id)
+        : [...p.module_ids, id],
     }));
-  };
-
-  const removeModuleRow = (i: number) => {
-    setForm(p => ({ ...p, modules: p.modules.filter((_, idx) => idx !== i) }));
-  };
-
-  const handleCsvImport = async (file: File) => {
-    try {
-      const text = await file.text();
-      const parsed = parseModulesCsv(text);
-      if (parsed.length === 0) {
-        toast.error('Aucun module valide trouvé dans le CSV');
-        return;
-      }
-      setForm(p => ({ ...p, modules: [...p.modules, ...parsed] }));
-      toast.success(`${parsed.length} module(s) importé(s)`);
-    } catch {
-      toast.error('Impossible de lire le fichier');
-    }
-    if (csvInputRef.current) csvInputRef.current.value = '';
   };
 
   const handleSave = async () => {
@@ -166,17 +308,24 @@ const FilieresPage: React.FC = () => {
         secteur: form.secteur.trim() || null,
       };
       if (!editing) base.duree_mois = 24;
+      // Only send module IDs that are NEWLY selected (not already attached).
+      // Backend "attach = reassign" semantic; sending already-attached IDs is a
+      // safe no-op but sending new ones moves them to this filière.
+      const newAttachIds = form.module_ids.filter(id => !initiallyAttached.has(id));
+      if (newAttachIds.length > 0) base.module_ids = newAttachIds;
+
       if (editing) {
         await filieresApi.update(editing.id, base);
-        toast.success('Filière mise à jour');
-      } else {
-        const modules = form.modules
-          .filter(m => m.nom.trim() && Number(m.heures_total) > 0)
-          .map(m => ({ nom: m.nom.trim(), heures_total: Number(m.heures_total) }));
-        await filieresApi.create({ ...base, modules } as any);
         toast.success(
-          modules.length > 0
-            ? `Filière créée avec ${modules.length} module(s)`
+          newAttachIds.length > 0
+            ? `Filière mise à jour, ${newAttachIds.length} module(s) rattaché(s)`
+            : 'Filière mise à jour'
+        );
+      } else {
+        await filieresApi.create(base as any);
+        toast.success(
+          newAttachIds.length > 0
+            ? `Filière créée avec ${newAttachIds.length} module(s) rattaché(s)`
             : 'Filière créée'
         );
       }
@@ -367,84 +516,21 @@ const FilieresPage: React.FC = () => {
             required
           />
 
-          {!editing && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Modules ({form.modules.length})
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={csvInputRef}
-                    type="file"
-                    accept=".csv,.txt"
-                    className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) handleCsvImport(f); }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => csvInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-xs font-medium rounded-lg transition-colors"
-                  >
-                    <HiUpload className="h-3.5 w-3.5" /> Import CSV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addModuleRow}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-lg transition-colors"
-                  >
-                    <HiPlus className="h-3.5 w-3.5" /> Ajouter module
-                  </button>
-                </div>
-              </div>
+          <ModulesPicker
+            loading={modulesLoading}
+            allModules={allModules}
+            selectedIds={form.module_ids}
+            initiallyAttached={initiallyAttached}
+            editingFiliereId={editing?.id ?? null}
+            editingFiliereNom={editing?.nom || form.nom}
+            onToggle={toggleModule}
+            search={moduleSearch}
+            onSearchChange={setModuleSearch}
+          />
 
-              {form.modules.length === 0 ? (
-                <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center">
-                  <p className="text-sm text-gray-400 dark:text-gray-500">Aucun module ajouté</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    CSV format: <code className="text-gray-500 dark:text-gray-400">nom,heures</code> (une ligne par module)
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {form.modules.map((m, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={m.nom}
-                        onChange={e => updateModuleRow(i, { nom: e.target.value })}
-                        placeholder="Nom du module"
-                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:text-gray-100 placeholder-gray-400"
-                      />
-                      <div className="relative w-24">
-                        <input
-                          type="number"
-                          value={m.heures_total}
-                          onChange={e => updateModuleRow(i, { heures_total: e.target.value === '' ? '' : Number(e.target.value) })}
-                          min={0}
-                          className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:text-gray-100"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-gray-500 pointer-events-none">H</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeModuleRow(i)}
-                        className="p-2 text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                      >
-                        <HiX className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {editing && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-4 py-3">
-              Pour ajouter, modifier ou supprimer des modules, utilisez la page <Link to={`${basePath}/modules`} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">Modules</Link>.
-            </p>
-          )}
+          <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg px-4 py-3">
+            Pour créer, modifier ou supprimer un module, utilisez la page <Link to={`${basePath}/modules`} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">Modules</Link>.
+          </p>
         </div>
       </Modal>
 

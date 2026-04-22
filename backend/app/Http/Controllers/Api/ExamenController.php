@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Examen;
+use App\Models\Salle;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 
@@ -50,6 +51,13 @@ class ExamenController extends Controller
             'heure_fin' => 'required|date_format:H:i|after:heure_debut',
         ]);
 
+        if (! empty($validated['salle_id'])) {
+            $salle = Salle::find($validated['salle_id']);
+            if ($salle && ! $salle->is_active) {
+                return $this->error('Cette salle est marquée indisponible' . ($salle->motif_indisponibilite ? ' : ' . $salle->motif_indisponibilite : '.'), 422);
+            }
+        }
+
         $examen = Examen::create($validated);
         $examen->load(['module', 'group', 'salle', 'formateur.user']);
 
@@ -75,6 +83,13 @@ class ExamenController extends Controller
             'heure_debut' => 'sometimes|date_format:H:i',
             'heure_fin' => 'sometimes|date_format:H:i',
         ]);
+
+        if (array_key_exists('salle_id', $validated) && !empty($validated['salle_id'])) {
+            $salle = Salle::find($validated['salle_id']);
+            if ($salle && ! $salle->is_active) {
+                return $this->error('Cette salle est marquée indisponible' . ($salle->motif_indisponibilite ? ' : ' . $salle->motif_indisponibilite : '.'), 422);
+            }
+        }
 
         $examen->update($validated);
         $examen->load(['module', 'group', 'salle', 'formateur.user']);

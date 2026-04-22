@@ -32,6 +32,11 @@ class Formateur extends Model
         return $this->belongsToMany(Module::class, 'formateur_module');
     }
 
+    public function groups()
+    {
+        return $this->belongsToMany(Group::class, 'formateur_group');
+    }
+
     public function emploiDuTemps()
     {
         return $this->hasMany(EmploiDuTemps::class);

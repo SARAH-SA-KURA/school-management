@@ -83,6 +83,7 @@ export interface Salle {
   batiment?: string;
   equipements?: string[];
   is_active: boolean;
+  motif_indisponibilite?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -99,6 +100,7 @@ export interface Formateur {
   created_at: string;
   updated_at: string;
   modules?: Module[];
+  groups?: Group[];
 }
 
 // Stagiaire

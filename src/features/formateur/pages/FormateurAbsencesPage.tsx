@@ -45,7 +45,9 @@ const FormateurAbsencesPage: React.FC = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const grpRes = await axiosInstance.get('/groups');
+        // Only groups this formateur is assigned to — fed by the formateur_group
+        // pivot set from the Directeur's Ajouter/Modifier formateur cascade.
+        const grpRes = await axiosInstance.get('/formateur/groups');
         setGroups(grpRes.data.data);
       } catch {
         toast.error('Erreur lors du chargement des données');

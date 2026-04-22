@@ -36,12 +36,15 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        // Formateur + Stagiaire have their own profile tables — creating them
+        // here would leave a User without the required child row, so they must
+        // go through /formateurs and /stagiaires respectively.
         $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
-            'role' => 'required|in:directeur,formateur,stagiaire,surveillant',
+            'role' => 'required|in:directeur,surveillant',
             'telephone' => 'nullable|string',
         ]);
 
@@ -58,14 +61,21 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        // Role can only be changed between the two "profile-less" roles here.
+        // Switching to/from formateur/stagiaire would orphan or duplicate the
+        // related profile row and must be done via the dedicated endpoints.
         $validated = $request->validate([
             'nom' => 'sometimes|string|max:255',
             'prenom' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            'role' => 'sometimes|in:directeur,formateur,stagiaire,surveillant',
+            'role' => 'sometimes|in:directeur,surveillant',
             'telephone' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
+
+        if (isset($validated['role']) && in_array($user->role, ['formateur', 'stagiaire'], true)) {
+            return $this->error("Modifiez un compte formateur / stagiaire depuis sa page dédiée.", 422);
+        }
 
         $user->update($validated);
 

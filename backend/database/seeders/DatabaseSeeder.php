@@ -115,6 +115,12 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        // Deterministic randomness — same seed = same names every run.
+        // Changing this number would regenerate a fresh cohort on purpose.
+        mt_srand(42);
+        srand(42);
+        fake()->seed(42);
+
         // ──────────────── Clear all data first (disable FKs) ────────────────
         $driver = DB::connection()->getDriverName();
         if ($driver === 'mysql') {
@@ -254,6 +260,17 @@ class DatabaseSeeder extends Seeder
             $salles->push(Salle::create(array_merge(['is_active' => true, 'equipements' => null], $s)));
         }
 
+        // Mark 2 salles indisponible for demo — Directeur can toggle these back.
+        // These rooms will be excluded from Surveillant pickers (emploi, examens).
+        $salles->firstWhere('nom', 'TP-4')?->update([
+            'is_active' => false,
+            'motif_indisponibilite' => 'Projecteur en panne — en attente de remplacement',
+        ]);
+        $salles->firstWhere('nom', 'Salle B2')?->update([
+            'is_active' => false,
+            'motif_indisponibilite' => 'Rénovation en cours (peinture + climatisation)',
+        ]);
+
         // ──────────────── Groups (4 per filière = 24) ────────────────
 
         $allGroups = collect();
@@ -320,6 +337,20 @@ class DatabaseSeeder extends Seeder
             $fIdx++;
         }
 
+        // Assign groups to each formateur — all groups whose filière the
+        // formateur teaches at least one module in. Keeps the formateur_group
+        // pivot consistent with the formateur_module pivot so logging in as a
+        // seeded formateur surfaces his actual students end-to-end.
+        foreach ($allFormateurs as $formateur) {
+            $taughtFiliereIds = $formateur->modules()->pluck('modules.filiere_id')->unique()->values();
+            if ($taughtFiliereIds->isEmpty()) continue;
+
+            $groupIds = Group::whereIn('filiere_id', $taughtFiliereIds)
+                ->pluck('id')
+                ->all();
+            $formateur->groups()->syncWithoutDetaching($groupIds);
+        }
+
         // ──────────────── Stagiaires (20-30 per group, Moroccan names) ────────────────
 
         foreach ($allGroups as $group) {
@@ -363,19 +394,18 @@ class DatabaseSeeder extends Seeder
         // physically double-booked.
 
         $jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
-        // Index 2 (12:30-14:00) is the lunch break — never scheduled.
-        // Each slot has a fixed start time; duration is randomized among realistic
-        // lengths so the timetable reflects real OFPPT sessions (1h, 1h30, 2h, 2h30).
+        // Uniform OFPPT slots: 4 x 2h30 blocks. Every session occupies exactly
+        // one slot — no sub-durations, no lunch break row in the grid.
         $creneaux = [
-            ['08:30', ['09:30', '10:00', '10:30']],          // 1h, 1h30, 2h
-            ['10:30', ['11:30', '12:00', '12:30']],          // 1h, 1h30, 2h
-            null,                                            // lunch break
-            ['14:00', ['15:00', '15:30', '16:00']],          // 1h, 1h30, 2h
-            ['16:00', ['17:00', '17:30', '18:00', '18:30']], // 1h, 1h30, 2h, 2h30
+            ['08:30', '11:00'],
+            ['11:00', '13:30'],
+            ['13:30', '16:00'],
+            ['16:00', '18:30'],
         ];
-        $schedulableIndexes = [0, 1, 3, 4];
+        $schedulableIndexes = [0, 1, 2, 3];
 
-        $courseSalles = $salles->filter(fn ($s) => in_array($s->type, ['cours', 'tp']))->values();
+        // Only disponible salles go into the emploi — indisponibles are off the grid.
+        $courseSalles = $salles->filter(fn ($s) => in_array($s->type, ['cours', 'tp']) && $s->is_active)->values();
 
         // slotBookings[jour][slotIdx] = ['formateurs' => [...], 'salles' => [...], 'groups' => [...]]
         $slotBookings = [];
@@ -385,13 +415,18 @@ class DatabaseSeeder extends Seeder
             }
         }
 
+        // Track per-formateur weekly minutes — cap at 30h (1800 min) per OFPPT rules.
+        $formateurWeeklyMinutes = [];
+        $FORMATEUR_WEEKLY_CAP = 1800; // 30h
+        $SLOT_MINUTES = 150;          // 2h30
+
         foreach ($allGroups as $group) {
             $filiereModules = $allModules->where('filiere_id', $group->filiere_id)->values();
             if ($filiereModules->isEmpty()) continue;
 
             $moduleIdx = 0;
             foreach ($jours as $jour) {
-                // Saturday: morning slots only (08:30-10:30, 10:30-12:30)
+                // Saturday: morning slots only (08:30-11:00 + 11:00-13:30)
                 $daySchedulable = $jour === 'samedi' ? [0, 1] : $schedulableIndexes;
                 $slotsForDay = $jour === 'samedi'
                     ? fake()->numberBetween(1, 2)
@@ -400,15 +435,13 @@ class DatabaseSeeder extends Seeder
                 $slotIndexes = collect($daySchedulable)->shuffle()->take($slotsForDay);
 
                 foreach ($slotIndexes as $slotIdx) {
-                    $slotDef = $creneaux[$slotIdx];
-                    // Pick a random end time from the available durations for this slot
-                    $possibleEnds = $slotDef[1];
-                    $slot = [$slotDef[0], $possibleEnds[array_rand($possibleEnds)]];
+                    $slot = $creneaux[$slotIdx];
 
-                    // Skip if this group is already booked at this slot (shouldn't happen but defensive)
+                    // Skip if this group is already booked at this slot
                     if (in_array($group->id, $slotBookings[$jour][$slotIdx]['groups'], true)) continue;
 
                     // Try to find a module whose formateur is available at this slot
+                    // AND has weekly room under the 30h cap.
                     $chosenModule = null;
                     $chosenFormateur = null;
                     for ($attempt = 0; $attempt < $filiereModules->count(); $attempt++) {
@@ -416,6 +449,8 @@ class DatabaseSeeder extends Seeder
                         $formateur = $candidate->formateurs->first();
                         if (!$formateur) continue;
                         if (in_array($formateur->id, $slotBookings[$jour][$slotIdx]['formateurs'], true)) continue;
+                        $alreadyMinutes = $formateurWeeklyMinutes[$formateur->id] ?? 0;
+                        if ($alreadyMinutes + $SLOT_MINUTES > $FORMATEUR_WEEKLY_CAP) continue;
                         $chosenModule = $candidate;
                         $chosenFormateur = $formateur;
                         $moduleIdx = ($moduleIdx + $attempt + 1) % $filiereModules->count();
@@ -443,6 +478,7 @@ class DatabaseSeeder extends Seeder
                     $slotBookings[$jour][$slotIdx]['formateurs'][] = $chosenFormateur->id;
                     $slotBookings[$jour][$slotIdx]['salles'][] = $salle->id;
                     $slotBookings[$jour][$slotIdx]['groups'][] = $group->id;
+                    $formateurWeeklyMinutes[$chosenFormateur->id] = ($formateurWeeklyMinutes[$chosenFormateur->id] ?? 0) + $SLOT_MINUTES;
                 }
             }
         }
@@ -468,7 +504,7 @@ class DatabaseSeeder extends Seeder
                     $allExamens->push(Examen::create([
                         'module_id'      => $module->id,
                         'group_id'       => $group->id,
-                        'salle_id'       => $salles->random()->id,
+                        'salle_id'       => $salles->where('is_active', true)->random()->id,
                         'formateur_id'   => $formateur->id,
                         'surveillant_id' => $survUser->id,
                         'type'           => 'controle',
@@ -483,7 +519,7 @@ class DatabaseSeeder extends Seeder
                 $allExamens->push(Examen::create([
                     'module_id'      => $module->id,
                     'group_id'       => $group->id,
-                    'salle_id'       => $salles->random()->id,
+                    'salle_id'       => $salles->where('is_active', true)->random()->id,
                     'formateur_id'   => $formateur->id,
                     'surveillant_id' => $survUser->id,
                     'type'           => 'efm',
@@ -495,27 +531,58 @@ class DatabaseSeeder extends Seeder
         }
 
         // ──────────────── Notes (correlated per student) ────────────────
+        // To exercise every state the Directeur's Notes dashboard shows
+        // (complètes / en cours / non entrées), we vary completeness per
+        // (group, module) pair:
+        //   - ~55% of modules → fully graded  → "Complètes"
+        //   - ~30% of modules → 40-80% graded → "En cours"
+        //   - ~15% of modules → 0 graded       → "Non entrées"
+        //
+        // Within a partial module, every exam of that module gets the SAME
+        // missing-student subset, so one student who's missing CC1 is also
+        // missing CC2/CC3/EFM (realistic: a student who dropped out halfway).
 
-        // Group exams by group_id so we can assign correlated grades per student
         $examsByGroup = $allExamens->groupBy('group_id');
 
         foreach ($examsByGroup as $groupId => $groupExamens) {
-            $stagiaireIds = Stagiaire::where('group_id', $groupId)->pluck('id');
+            $stagiaireIds = Stagiaire::where('group_id', $groupId)->pluck('id')->all();
 
-            foreach ($stagiaireIds as $sid) {
-                // Base academic level for this student (6-17), gives realistic spread
-                $baseLevel = round(mt_rand(60, 170) / 10, 1);
+            // Bucket exams by module so we can decide completeness per module.
+            $examsByModule = $groupExamens->groupBy('module_id');
 
-                foreach ($groupExamens as $examen) {
-                    // Vary ±3 around base, clamp [2, 20]
-                    $variation = (mt_rand(-30, 30)) / 10;
-                    $note = round(min(20, max(2, $baseLevel + $variation)), 2);
+            foreach ($examsByModule as $moduleId => $moduleExamens) {
+                $roll = mt_rand(1, 100);
+                if ($roll <= 15) {
+                    // Non entrées: skip this module entirely for this group.
+                    continue;
+                }
 
-                    Note::create([
-                        'stagiaire_id' => $sid,
-                        'examen_id'    => $examen->id,
-                        'note'         => $note,
-                    ]);
+                // Pick the "missing" subset for this module (empty set = full entry).
+                $missing = [];
+                if ($roll <= 45) {
+                    // "En cours": 20-60% of students won't have notes.
+                    $missCount = (int) round(count($stagiaireIds) * (mt_rand(20, 60) / 100));
+                    $shuffled = $stagiaireIds;
+                    shuffle($shuffled);
+                    $missing = array_slice($shuffled, 0, $missCount);
+                }
+                $missingSet = array_flip($missing);
+
+                foreach ($stagiaireIds as $sid) {
+                    if (isset($missingSet[$sid])) continue;
+                    // Base academic level for this student (6-17), gives realistic spread
+                    $baseLevel = round(mt_rand(60, 170) / 10, 1);
+
+                    foreach ($moduleExamens as $examen) {
+                        $variation = (mt_rand(-30, 30)) / 10;
+                        $note = round(min(20, max(2, $baseLevel + $variation)), 2);
+
+                        Note::create([
+                            'stagiaire_id' => $sid,
+                            'examen_id'    => $examen->id,
+                            'note'         => $note,
+                        ]);
+                    }
                 }
             }
         }

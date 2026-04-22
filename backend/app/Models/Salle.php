@@ -16,6 +16,7 @@ class Salle extends Model
         'batiment',
         'equipements',
         'is_active',
+        'motif_indisponibilite',
     ];
 
     protected $casts = [

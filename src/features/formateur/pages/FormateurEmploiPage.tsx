@@ -15,15 +15,17 @@ interface ScheduleEntry {
   type: 'presentiel' | 'a_distance';
   jour: string;
   slot: number;
+  heureDebut: string;
+  heureFin: string;
 }
 
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const daysLower = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const timeSlots = [
-  { start: '08:30', end: '10:50' },
-  { start: '11:10', end: '13:20' },
-  { start: '13:30', end: '15:50' },
-  { start: '16:10', end: '18:30' },
+  { start: '08:30', end: '11:00' },
+  { start: '11:00', end: '13:30' },
+  { start: '13:30', end: '16:00' },
+  { start: '16:00', end: '18:30' },
 ];
 
 const GROUP_COLORS = [
@@ -38,10 +40,10 @@ const GROUP_COLORS = [
 ];
 
 const getSlotIndex = (heureDebut: string): number => {
-  const h = parseInt(heureDebut.split(':')[0], 10);
-  if (h < 10) return 0;
-  if (h < 13) return 1;
-  if (h < 16) return 2;
+  const t = (heureDebut || '').slice(0, 5);
+  if (t < '11:00') return 0;
+  if (t < '13:30') return 1;
+  if (t < '16:00') return 2;
   return 3;
 };
 
@@ -71,6 +73,8 @@ const FormateurEmploiPage: React.FC = () => {
           type: item.id % 7 === 0 ? 'a_distance' : 'presentiel',
           jour: item.jour || '',
           slot: getSlotIndex(item.heure_debut || '08:30'),
+          heureDebut: item.heure_debut || '',
+          heureFin: item.heure_fin || '',
         }));
         setEntries(mapped);
       }
@@ -91,6 +95,36 @@ const FormateurEmploiPage: React.FC = () => {
     if (!formateurId) return entries;
     return entries.filter(e => e.formateurId === formateurId);
   }, [entries, formateurId]);
+
+  const totalHours = useMemo(() => {
+    const toMin = (t: string) => {
+      const [h, m] = (t || '').split(':').map(n => parseInt(n, 10));
+      return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+    };
+    const minutes = filteredEntries.reduce((acc, e) => {
+      const d = toMin((e.heureDebut || '').slice(0, 5));
+      const f = toMin((e.heureFin || '').slice(0, 5));
+      return acc + Math.max(0, f - d);
+    }, 0);
+    return Math.round((minutes / 60) * 10) / 10; // 1 decimal
+  }, [filteredEntries]);
+
+  const hoursByGroup = useMemo(() => {
+    const map = new Map<string, number>();
+    const toMin = (t: string) => {
+      const [h, m] = (t || '').split(':').map(n => parseInt(n, 10));
+      return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+    };
+    filteredEntries.forEach(e => {
+      const d = toMin((e.heureDebut || '').slice(0, 5));
+      const f = toMin((e.heureFin || '').slice(0, 5));
+      const hrs = Math.max(0, f - d) / 60;
+      map.set(e.groupe, (map.get(e.groupe) || 0) + hrs);
+    });
+    return Array.from(map.entries())
+      .map(([groupe, hours]) => ({ groupe, hours: Math.round(hours * 10) / 10 }))
+      .sort((a, b) => b.hours - a.hours);
+  }, [filteredEntries]);
 
   const getSlotEntries = (jour: string, slotIdx: number) =>
     filteredEntries.filter(e => e.jour.toLowerCase() === jour.toLowerCase() && e.slot === slotIdx);
@@ -113,9 +147,24 @@ const FormateurEmploiPage: React.FC = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
-        <div className="flex items-center gap-3 px-6 py-4 flex-wrap">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mr-1">Time Table</h2>
-
+        <div className="flex items-center justify-between gap-3 px-6 py-4 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mr-1">Time Table</h2>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {filteredEntries.length} séance{filteredEntries.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-4 flex-wrap">
+            {hoursByGroup.map(g => (
+              <span key={g.groupe} className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                <span className={`h-2 w-2 rounded-full ${getGroupColor(g.groupe)}`} />
+                {g.groupe} : <strong>{g.hours}h</strong>
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-600 dark:text-primary-400 px-3 py-1 bg-primary-50 dark:bg-primary-900/20 rounded-full border border-primary-100 dark:border-primary-800">
+              Total : {totalHours}h / semaine
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

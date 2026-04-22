@@ -3,7 +3,66 @@ import { Link } from 'react-router-dom';
 import { useTheme } from '../../../contexts/ThemeContext';
 import axiosInstance from '../../../utils/axios';
 import toast from 'react-hot-toast';
-import { HiDownload, HiUpload, HiChevronDown } from 'react-icons/hi';
+import {
+  HiDownload, HiUpload, HiChevronDown,
+  HiPlus, HiPencil, HiTrash, HiDotsHorizontal,
+  HiCalendar, HiClock, HiLocationMarker,
+} from 'react-icons/hi';
+import { Modal, Button, Input, Select, ConfirmDialog } from '../../../components/ui';
+import type { SelectOption } from '../../../types';
+
+const TYPE_OPTIONS: SelectOption[] = [
+  { value: 'controle',   label: 'Contrôle continu (CC)' },
+  { value: 'efm',        label: 'EFM' },
+  { value: 'eff',        label: 'EFF' },
+  { value: 'rattrapage', label: 'Rattrapage' },
+];
+
+const formatExamDate = (iso?: string): string => {
+  if (!iso) return '—';
+  const d = iso.slice(0, 10);
+  const [y, m, day] = d.split('-');
+  return y && m && day ? `${day}/${m}/${y}` : iso;
+};
+
+const typeBadge = (type: string, numero?: number | null): { label: string; cls: string } => {
+  switch (type) {
+    case 'controle':
+      return { label: `CC${numero || ''}`.trim(), cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' };
+    case 'efm':
+      return { label: 'EFM', cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' };
+    case 'eff':
+      return { label: 'EFF', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' };
+    case 'rattrapage':
+      return { label: 'Rattrapage', cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' };
+    default:
+      return { label: type, cls: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' };
+  }
+};
+
+interface PlanningFormState {
+  filiere_id: string;
+  group_id: string;
+  module_id: string;
+  salle_id: string;
+  type: string;
+  numero: string;
+  date_examen: string;
+  heure_debut: string;
+  heure_fin: string;
+}
+
+const emptyPlanningForm: PlanningFormState = {
+  filiere_id: '',
+  group_id: '',
+  module_id: '',
+  salle_id: '',
+  type: 'controle',
+  numero: '1',
+  date_examen: '',
+  heure_debut: '08:30',
+  heure_fin: '10:30',
+};
 
 interface Module {
   id: number;
@@ -53,6 +112,11 @@ const FormateurExamensPage: React.FC = () => {
   const [loadingNotes,setLoadingNotes]= useState(false);
   const [saving,      setSaving]      = useState(false);
   const [isSaved,     setIsSaved]     = useState(false);
+  // Locked = Directeur has validated the current (group, module) notes.
+  // The whole Notes UI goes read-only in that case; only a retract by the
+  // Directeur can re-open it.
+  const [moduleLocked, setModuleLocked] = useState(false);
+  const [moduleLockInfo, setModuleLockInfo] = useState<{ validated_at: string | null; validated_by: { nom: string; prenom: string } | null } | null>(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,6 +125,24 @@ const FormateurExamensPage: React.FC = () => {
   const exportRef  = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [exportOpen, setExportOpen] = useState(false);
+
+  // ── Tab + Planning state ──────────────────────────────────────────────────
+  // Default to the Planning tab: the Formateur's primary job here is to
+  // schedule his own exams. Notes entry is the secondary flow.
+  const [activeTab, setActiveTab] = useState<'planning' | 'notes'>('planning');
+
+  const [allSalles, setAllSalles] = useState<any[]>([]);
+  const [examsList, setExamsList] = useState<any[]>([]);
+  const [examsLoading, setExamsLoading] = useState(false);
+  const [planningFilterType, setPlanningFilterType] = useState('');
+  const [planningFilterGroup, setPlanningFilterGroup] = useState('');
+  const [planningFilterModule, setPlanningFilterModule] = useState('');
+  const [planningFormOpen, setPlanningFormOpen] = useState(false);
+  const [planningDeleteOpen, setPlanningDeleteOpen] = useState(false);
+  const [planningEditing, setPlanningEditing] = useState<any>(null);
+  const [planningForm, setPlanningForm] = useState<PlanningFormState>(emptyPlanningForm);
+  const [planningSaving, setPlanningSaving] = useState(false);
+  const [planningMenuId, setPlanningMenuId] = useState<number | null>(null);
 
   // Column keys derived from numControle: ['cc_1', 'cc_2', ..., 'efm']
   const columns = [
@@ -75,24 +157,27 @@ const FormateurExamensPage: React.FC = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const [filRes, grpRes, fmtRes] = await Promise.all([
-          axiosInstance.get('/filieres'),
-          axiosInstance.get('/groups'),
+        // Source of truth: /formateur/groups (explicit formateur_group pivot)
+        // + /auth/formateur (includes his modules). No client-side filtering
+        // on /groups anymore — the backend already scopes everything.
+        const [grpRes, fmtRes] = await Promise.all([
+          axiosInstance.get('/formateur/groups'),
           axiosInstance.get('/auth/formateur'),
         ]);
         const fmt = fmtRes.data.data;
         const myModules = fmt.modules || [];
+        const myGroups  = grpRes.data.data || [];
         setFormateur(fmt);
         setModules(myModules);
+        setGroups(myGroups);
 
-        // Narrow filières & groups to those this formateur actually teaches in
-        const myFiliereIds = new Set<number>(
-          myModules.map((m: any) => m.filiere_id ?? m.filiere?.id).filter(Boolean)
-        );
-        const allFilieres = filRes.data.data || [];
-        const allGroups   = grpRes.data.data || [];
-        setFilieres(allFilieres.filter((f: any) => myFiliereIds.has(f.id)));
-        setGroups(allGroups.filter((g: any) => myFiliereIds.has(g.filiere_id)));
+        // Filières = union of his groups' filières + his modules' filières.
+        // A formateur might have a module without a group in that filière yet
+        // (or vice-versa) — keep the filière visible in either case.
+        const filiereMap = new Map<number, any>();
+        myGroups.forEach((g: any) => { if (g.filiere) filiereMap.set(g.filiere.id, g.filiere); });
+        myModules.forEach((m: any) => { if (m.filiere) filiereMap.set(m.filiere.id, m.filiere); });
+        setFilieres(Array.from(filiereMap.values()));
       } catch {
         toast.error('Erreur lors du chargement des données');
       } finally {
@@ -126,10 +211,35 @@ const FormateurExamensPage: React.FC = () => {
 
   // ── Lookup existing exams + notes when filters are fully set ──────────────
   const lookupExistingData = useCallback(async () => {
-    if (!selectedModule || !selectedGroupe || !formateur) return;
+    if (!selectedModule || !selectedGroupe || !formateur) {
+      setModuleLocked(false);
+      setModuleLockInfo(null);
+      return;
+    }
     setLoadingNotes(true);
     setExamenMap({});
     setIsSaved(false);
+    setModuleLocked(false);
+    setModuleLockInfo(null);
+
+    // Check validation state for this (group, module). If locked, the form
+    // below goes read-only and the Save button hides.
+    try {
+      const statusRes = await axiosInstance.get('/notes/group-modules-status', {
+        params: { group_id: selectedGroupe },
+      });
+      const mods: any[] = statusRes.data?.data?.modules || [];
+      const thisMod = mods.find((m: any) => String(m.id) === String(selectedModule));
+      if (thisMod?.is_validated) {
+        setModuleLocked(true);
+        setModuleLockInfo({
+          validated_at: thisMod.validated_at || null,
+          validated_by: thisMod.validated_by || null,
+        });
+      }
+    } catch {
+      // Non-fatal; proceed without lock info.
+    }
 
     try {
       // Fetch all exams for this formateur+module+group combo
@@ -190,6 +300,140 @@ const FormateurExamensPage: React.FC = () => {
   }, [selectedModule, selectedGroupe, formateur]);
 
   useEffect(() => { lookupExistingData(); }, [lookupExistingData]);
+
+  // ── Planning: load salles (for room picker) + outside-click for menu ─────
+  useEffect(() => {
+    axiosInstance.get('/salles-all')
+      .then(r => setAllSalles(r.data?.data || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const h = () => setPlanningMenuId(null);
+    document.addEventListener('click', h);
+    return () => document.removeEventListener('click', h);
+  }, []);
+
+  // ── Planning: fetch formateur's own exams when filters change ─────────────
+  const fetchExamsList = useCallback(async () => {
+    if (!formateur || activeTab !== 'planning') return;
+    setExamsLoading(true);
+    try {
+      const params: any = { formateur_id: formateur.id, per_page: 200 };
+      if (planningFilterType) params.type = planningFilterType;
+      if (planningFilterGroup) params.group_id = planningFilterGroup;
+      if (planningFilterModule) params.module_id = planningFilterModule;
+      const res = await axiosInstance.get('/examens', { params });
+      setExamsList(res.data.data || []);
+    } catch {
+      toast.error('Erreur de chargement des examens');
+    }
+    setExamsLoading(false);
+  }, [formateur, activeTab, planningFilterType, planningFilterGroup, planningFilterModule]);
+
+  useEffect(() => { fetchExamsList(); }, [fetchExamsList]);
+
+  // ── Planning handlers ─────────────────────────────────────────────────────
+  const openCreatePlanning = () => {
+    setPlanningEditing(null);
+    setPlanningForm(emptyPlanningForm);
+    setPlanningFormOpen(true);
+  };
+
+  const openEditPlanning = (e: any) => {
+    setPlanningEditing(e);
+    setPlanningForm({
+      filiere_id:  String(e.group?.filiere_id || ''),
+      group_id:    String(e.group_id || e.group?.id || ''),
+      module_id:   String(e.module_id || e.module?.id || ''),
+      salle_id:    String(e.salle_id ?? e.salle?.id ?? ''),
+      type:        e.type || 'controle',
+      numero:      String(e.numero ?? 1),
+      date_examen: (e.date_examen || '').slice(0, 10),
+      heure_debut: (e.heure_debut || '').slice(0, 5),
+      heure_fin:   (e.heure_fin || '').slice(0, 5),
+    });
+    setPlanningFormOpen(true);
+    setPlanningMenuId(null);
+  };
+
+  const handleSavePlanning = async () => {
+    if (!planningForm.group_id || !planningForm.module_id || !planningForm.type ||
+        !planningForm.date_examen || !planningForm.heure_debut || !planningForm.heure_fin) {
+      toast.error('Groupe, module, type, date et horaires sont requis');
+      return;
+    }
+    if (planningForm.heure_debut >= planningForm.heure_fin) {
+      toast.error('L\'heure de fin doit être après l\'heure de début');
+      return;
+    }
+    if (!formateur) return;
+    setPlanningSaving(true);
+    try {
+      const payload: any = {
+        group_id:     Number(planningForm.group_id),
+        module_id:    Number(planningForm.module_id),
+        formateur_id: formateur.id,
+        salle_id:     planningForm.salle_id ? Number(planningForm.salle_id) : null,
+        type:         planningForm.type,
+        date_examen:  planningForm.date_examen,
+        heure_debut:  planningForm.heure_debut,
+        heure_fin:    planningForm.heure_fin,
+      };
+      if (planningForm.type === 'controle' && planningForm.numero) {
+        payload.numero = Number(planningForm.numero);
+      }
+      if (planningEditing) {
+        await axiosInstance.put(`/examens/${planningEditing.id}`, payload);
+        toast.success('Examen mis à jour');
+      } else {
+        await axiosInstance.post('/examens', payload);
+        toast.success('Examen planifié');
+      }
+      setPlanningFormOpen(false);
+      fetchExamsList();
+    } catch (err: any) {
+      const errors = err.response?.data?.errors;
+      const firstErr = errors ? Object.values(errors).flat()[0] : null;
+      toast.error((firstErr as string) || err.response?.data?.message || 'Erreur');
+    }
+    setPlanningSaving(false);
+  };
+
+  const askDeletePlanning = (e: any) => {
+    setPlanningEditing(e);
+    setPlanningDeleteOpen(true);
+    setPlanningMenuId(null);
+  };
+
+  const handleDeletePlanning = async () => {
+    if (!planningEditing) return;
+    try {
+      await axiosInstance.delete(`/examens/${planningEditing.id}`);
+      toast.success('Examen supprimé');
+      setPlanningDeleteOpen(false);
+      setPlanningEditing(null);
+      fetchExamsList();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erreur');
+    }
+  };
+
+  // Options scoped to the formateur's own pedagogical scope (his filières,
+  // his groups, his modules). Modules further narrow to the selected filière.
+  const planningFormFiliereOptions: SelectOption[] = filieres.map((f: any) => ({ value: String(f.id), label: f.nom }));
+  const planningFormGroupOptions: SelectOption[] = groups
+    .filter((g: any) => !planningForm.filiere_id || String(g.filiere_id) === planningForm.filiere_id)
+    .map((g: any) => ({ value: String(g.id), label: g.nom }));
+  const planningFormModuleOptions: SelectOption[] = modules
+    .filter((m: any) => !planningForm.filiere_id || String(m.filiere_id ?? m.filiere?.id) === planningForm.filiere_id)
+    .map((m: any) => ({ value: String(m.id), label: m.nom }));
+  const planningFormSalleOptions: SelectOption[] = allSalles.map((s: any) => ({
+    value: String(s.id),
+    label: `${s.nom}${s.capacite ? ` (${s.capacite})` : ''}`,
+  }));
+  const planningFilterGroupOptions: SelectOption[] = groups.map((g: any) => ({ value: String(g.id), label: g.nom }));
+  const planningFilterModuleOptions: SelectOption[] = modules.map((m: any) => ({ value: String(m.id), label: m.nom }));
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleNoteChange = (stagiaireId: number, col: string, value: string) => {
@@ -310,7 +554,16 @@ const FormateurExamensPage: React.FC = () => {
   const pagedRows    = gradeRows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   const selectedModuleData = modules.find(m => m.id === parseInt(selectedModule));
-  const inputDisabled = isSaved || saving;
+  const inputDisabled = isSaved || saving || moduleLocked;
+
+  const formatLockedAt = (iso: string | null): string => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch { return iso; }
+  };
 
   // Pill-select style classes
   const pillCls = (disabled = false) =>
@@ -337,31 +590,178 @@ const FormateurExamensPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-          >
-            <HiUpload className="h-4 w-4" /> Import
-          </button>
-          <input ref={fileInputRef} type="file" accept=".csv,.xlsx" className="hidden" />
-
-          <div className="relative" ref={exportRef}>
+          {activeTab === 'planning' ? (
             <button
-              onClick={() => setExportOpen(!exportOpen)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+              onClick={openCreatePlanning}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors"
             >
-              <HiDownload className="h-4 w-4" /> Export
+              <HiPlus className="h-4 w-4" /> Planifier examen
             </button>
-            {exportOpen && (
-              <div className={`absolute right-0 mt-2 w-44 rounded-lg shadow-lg border z-20 overflow-hidden ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                <button onClick={exportToCSV} className={`w-full text-left px-4 py-2.5 text-sm ${isDark ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}>
-                  CSV
+          ) : (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+              >
+                <HiUpload className="h-4 w-4" /> Import
+              </button>
+              <input ref={fileInputRef} type="file" accept=".csv,.xlsx" className="hidden" />
+
+              <div className="relative" ref={exportRef}>
+                <button
+                  onClick={() => setExportOpen(!exportOpen)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                >
+                  <HiDownload className="h-4 w-4" /> Export
                 </button>
+                {exportOpen && (
+                  <div className={`absolute right-0 mt-2 w-44 rounded-lg shadow-lg border z-20 overflow-hidden ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                    <button onClick={exportToCSV} className={`w-full text-left px-4 py-2.5 text-sm ${isDark ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                      CSV
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* ── Tab switcher ── */}
+      <div className={`flex items-center gap-1 mb-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+        <button
+          onClick={() => setActiveTab('planning')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'planning'
+              ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+              : `border-transparent ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`
+          }`}
+        >
+          Planning des examens
+        </button>
+        <button
+          onClick={() => setActiveTab('notes')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'notes'
+              ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+              : `border-transparent ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`
+          }`}
+        >
+          Saisie des notes
+        </button>
+      </div>
+
+      {/* ═══════════════════════ PLANNING TAB ═══════════════════════ */}
+      {activeTab === 'planning' && (
+        <div className={`rounded-xl border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <h2 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Mes examens planifiés</h2>
+            <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {examsLoading ? '...' : `${examsList.length} examen${examsList.length > 1 ? 's' : ''}`}
+            </span>
+          </div>
+
+          <div className={`flex items-center gap-3 px-6 py-3 border-b flex-wrap ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <select
+              value={planningFilterType}
+              onChange={e => setPlanningFilterType(e.target.value)}
+              className={`text-sm border rounded-lg px-3 py-1.5 ${isDark ? 'border-gray-600 text-gray-200 bg-gray-700' : 'border-gray-200 text-gray-700 bg-white'}`}
+            >
+              <option value="">Tous les types</option>
+              {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <select
+              value={planningFilterGroup}
+              onChange={e => setPlanningFilterGroup(e.target.value)}
+              className={`text-sm border rounded-lg px-3 py-1.5 ${isDark ? 'border-gray-600 text-gray-200 bg-gray-700' : 'border-gray-200 text-gray-700 bg-white'}`}
+            >
+              <option value="">Tous mes groupes</option>
+              {planningFilterGroupOptions.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
+            <select
+              value={planningFilterModule}
+              onChange={e => setPlanningFilterModule(e.target.value)}
+              className={`text-sm border rounded-lg px-3 py-1.5 ${isDark ? 'border-gray-600 text-gray-200 bg-gray-700' : 'border-gray-200 text-gray-700 bg-white'}`}
+            >
+              <option value="">Tous mes modules</option>
+              {planningFilterModuleOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+            {(planningFilterType || planningFilterGroup || planningFilterModule) && (
+              <button
+                onClick={() => { setPlanningFilterType(''); setPlanningFilterGroup(''); setPlanningFilterModule(''); }}
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600"
+              >
+                Effacer filtres
+              </button>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className={`border-b ${isDark ? 'bg-gray-700/40 border-gray-700' : 'bg-gray-50/70 border-gray-200'}`}>
+                  <th className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Type</th>
+                  <th className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Module</th>
+                  <th className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Groupe</th>
+                  <th className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Date & heure</th>
+                  <th className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Salle</th>
+                  <th className={`px-4 py-3 text-left text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Action</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-50'}`}>
+                {examsLoading ? (
+                  <tr><td colSpan={6} className={`px-4 py-12 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Chargement...</td></tr>
+                ) : examsList.length === 0 ? (
+                  <tr><td colSpan={6} className={`px-4 py-12 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Aucun examen planifié</td></tr>
+                ) : examsList.map((e: any) => {
+                  const t = typeBadge(e.type, e.numero);
+                  return (
+                    <tr key={e.id} className={`transition-colors ${isDark ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50/70'}`}>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${t.cls}`}>{t.label}</span>
+                      </td>
+                      <td className={`px-4 py-3 text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{e.module?.nom || '—'}</td>
+                      <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{e.group?.nom || '—'}</td>
+                      <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <div className="flex items-center gap-1.5"><HiCalendar className="h-3.5 w-3.5 text-gray-400" />{formatExamDate(e.date_examen)}</div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-0.5"><HiClock className="h-3 w-3 text-gray-400" />{(e.heure_debut || '').slice(0, 5)} → {(e.heure_fin || '').slice(0, 5)}</div>
+                      </td>
+                      <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {e.salle?.nom ? (
+                          <span className="inline-flex items-center gap-1"><HiLocationMarker className="h-3.5 w-3.5 text-gray-400" />{e.salle.nom}</span>
+                        ) : <span className="text-gray-400 dark:text-gray-500 italic">non assignée</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="relative">
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); setPlanningMenuId(planningMenuId === e.id ? null : e.id); }}
+                            className={`p-1.5 rounded-lg ${isDark ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                          >
+                            <HiDotsHorizontal className="h-5 w-5" />
+                          </button>
+                          {planningMenuId === e.id && (
+                            <div className={`absolute right-0 top-full mt-1 rounded-lg shadow-lg py-1 z-10 min-w-[140px] border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                              <button onClick={(ev) => { ev.stopPropagation(); openEditPlanning(e); }} className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${isDark ? 'text-gray-200 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}>
+                                <HiPencil className="h-4 w-4" /> Modifier
+                              </button>
+                              <button onClick={(ev) => { ev.stopPropagation(); askDeletePlanning(e); }} className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
+                                <HiTrash className="h-4 w-4" /> Supprimer
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════ NOTES TAB ═══════════════════════ */}
+      {activeTab === 'notes' && <>
 
       {/* ── Main card ── */}
       <div className={`rounded-xl border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
@@ -444,12 +844,38 @@ const FormateurExamensPage: React.FC = () => {
             </select>
           </div>
 
-          {isSaved && (
+          {isSaved && !moduleLocked && (
             <span className="ml-auto px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
               ✓ Enregistré
             </span>
           )}
+          {moduleLocked && (
+            <span className="ml-auto px-3 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 inline-flex items-center gap-1">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2v-8a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z" clipRule="evenodd" /></svg>
+              Notes verrouillées
+            </span>
+          )}
         </div>
+
+        {/* ── Locked banner (Directeur validated this module's notes) ── */}
+        {moduleLocked && (
+          <div className={`mx-6 my-3 px-4 py-3 rounded-lg border ${isDark ? 'bg-red-900/10 border-red-900/40' : 'bg-red-50 border-red-200'}`}>
+            <div className="flex items-start gap-3">
+              <svg className={`h-5 w-5 mt-0.5 flex-shrink-0 ${isDark ? 'text-red-400' : 'text-red-600'}`} viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 1a4 4 0 00-4 4v3H5a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2v-8a2 2 0 00-2-2h-1V5a4 4 0 00-4-4zm2 7V5a2 2 0 10-4 0v3h4z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1 text-sm">
+                <p className={`font-semibold ${isDark ? 'text-red-300' : 'text-red-800'}`}>
+                  Ces notes ont été validées par le Directeur — modifications verrouillées.
+                </p>
+                <p className={`text-xs mt-1 ${isDark ? 'text-red-400/80' : 'text-red-700/80'}`}>
+                  {moduleLockInfo?.validated_at && `Validée le ${formatLockedAt(moduleLockInfo.validated_at)}. `}
+                  Pour corriger une note, demandez au Directeur de retirer la validation depuis son espace « Notes ».
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Table ── */}
         <div className="overflow-x-auto">
@@ -600,7 +1026,7 @@ const FormateurExamensPage: React.FC = () => {
 
       {/* ── Bottom action bar ── */}
       <div className="flex justify-end gap-3 mt-6">
-        {isSaved && (
+        {isSaved && !moduleLocked && (
           <button
             onClick={() => setIsSaved(false)}
             className={`px-6 py-3 rounded-xl text-sm font-medium transition-colors ${isDark ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
@@ -608,7 +1034,7 @@ const FormateurExamensPage: React.FC = () => {
             Modifier
           </button>
         )}
-        {isSaved && (
+        {isSaved && !moduleLocked && (
           <button
             onClick={handleReset}
             className={`px-6 py-3 rounded-xl text-sm font-medium transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
@@ -616,18 +1042,100 @@ const FormateurExamensPage: React.FC = () => {
             Nouvelle saisie
           </button>
         )}
-        <button
-          onClick={handleSave}
-          disabled={!selectedGroupe || !selectedModule || inputDisabled}
-          className={`px-8 py-3 rounded-xl text-sm font-medium transition-colors ${
-            !selectedGroupe || !selectedModule || inputDisabled
-              ? isDark ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-primary-600 text-white hover:bg-primary-700'
-          }`}
-        >
-          {saving ? 'Enregistrement...' : 'Enregistrer les notes'}
-        </button>
+        {!moduleLocked && (
+          <button
+            onClick={handleSave}
+            disabled={!selectedGroupe || !selectedModule || inputDisabled}
+            className={`px-8 py-3 rounded-xl text-sm font-medium transition-colors ${
+              !selectedGroupe || !selectedModule || inputDisabled
+                ? isDark ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-primary-600 text-white hover:bg-primary-700'
+            }`}
+          >
+            {saving ? 'Enregistrement...' : 'Enregistrer les notes'}
+          </button>
+        )}
       </div>
+      </>}
+
+      {/* ── Planning form modal ── */}
+      <Modal
+        isOpen={planningFormOpen}
+        onClose={() => setPlanningFormOpen(false)}
+        title={planningEditing ? 'Modifier l\'examen' : 'Planifier un examen'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPlanningFormOpen(false)}>Annuler</Button>
+            <Button onClick={handleSavePlanning} loading={planningSaving}>Enregistrer</Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Filière"
+              value={planningForm.filiere_id}
+              onChange={e => setPlanningForm(p => ({ ...p, filiere_id: e.target.value, group_id: '', module_id: '' }))}
+              options={[{ value: '', label: 'Choisir une filière' }, ...planningFormFiliereOptions]}
+              required
+            />
+            <Select
+              label="Groupe"
+              value={planningForm.group_id}
+              onChange={e => setPlanningForm(p => ({ ...p, group_id: e.target.value }))}
+              options={[{ value: '', label: planningForm.filiere_id ? 'Choisir un groupe' : 'Filière requise' }, ...planningFormGroupOptions]}
+              required
+            />
+          </div>
+          <Select
+            label="Module"
+            value={planningForm.module_id}
+            onChange={e => setPlanningForm(p => ({ ...p, module_id: e.target.value }))}
+            options={[{ value: '', label: planningForm.filiere_id ? 'Choisir un module' : 'Filière requise' }, ...planningFormModuleOptions]}
+            required
+          />
+          <div className="grid grid-cols-3 gap-4">
+            <Select
+              label="Type"
+              value={planningForm.type}
+              onChange={e => setPlanningForm(p => ({ ...p, type: e.target.value }))}
+              options={TYPE_OPTIONS}
+              required
+            />
+            {planningForm.type === 'controle' && (
+              <Select
+                label="Numéro"
+                value={planningForm.numero}
+                onChange={e => setPlanningForm(p => ({ ...p, numero: e.target.value }))}
+                options={[{ value: '1', label: 'CC1' }, { value: '2', label: 'CC2' }, { value: '3', label: 'CC3' }]}
+              />
+            )}
+            <Select
+              label="Salle"
+              value={planningForm.salle_id}
+              onChange={e => setPlanningForm(p => ({ ...p, salle_id: e.target.value }))}
+              options={[{ value: '', label: 'Salle non assignée' }, ...planningFormSalleOptions]}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Input label="Date" type="date" value={planningForm.date_examen} onChange={e => setPlanningForm(p => ({ ...p, date_examen: e.target.value }))} required />
+            <Input label="Heure début" type="time" value={planningForm.heure_debut} onChange={e => setPlanningForm(p => ({ ...p, heure_debut: e.target.value }))} required />
+            <Input label="Heure fin" type="time" value={planningForm.heure_fin} onChange={e => setPlanningForm(p => ({ ...p, heure_fin: e.target.value }))} required />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg px-3 py-2">
+            Vous planifiez cet examen en tant que formateur responsable. Les notes pourront ensuite être saisies dans l'onglet « Saisie des notes ».
+          </p>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={planningDeleteOpen}
+        onClose={() => setPlanningDeleteOpen(false)}
+        onConfirm={handleDeletePlanning}
+        title="Supprimer l'examen"
+        message={`Supprimer cet examen (${planningEditing?.module?.nom || ''} — ${planningEditing?.group?.nom || ''}) ? Les notes associées seront également supprimées.`}
+      />
     </div>
   );
 };

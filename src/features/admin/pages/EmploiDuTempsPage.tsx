@@ -5,9 +5,13 @@ import { useRolePath } from '../../../hooks/useRolePath';
 import { useAuth } from '../../../hooks/useAuth';
 import { Modal, Button, Input, Select, ConfirmDialog } from '../../../components/ui';
 import type { SelectOption } from '../../../types';
-import { HiX, HiPlus, HiPencil, HiTrash, HiDownload } from 'react-icons/hi';
+import { HiX, HiPlus, HiPencil, HiTrash, HiPrinter } from 'react-icons/hi';
 import toast from 'react-hot-toast';
-import * as XLSX from 'xlsx';
+
+const escapeHtml = (s: any): string =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 interface ScheduleEntry {
   id: number;
@@ -29,12 +33,12 @@ interface ScheduleEntry {
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const daysLower = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
-// 6 buckets per OFPPT daily rhythm
+// 4 OFPPT slots of 2h30 each. No explicit break row — the schedule is
+// continuous and the admin tool enforces these exact boundaries everywhere.
 const timeSlots = [
-  { start: '08:30', end: '10:30', isBreak: false },
-  { start: '10:30', end: '12:30', isBreak: false },
-  { start: '12:30', end: '14:00', isBreak: true, label: 'Pause déjeuner' },
-  { start: '14:00', end: '16:00', isBreak: false },
+  { start: '08:30', end: '11:00', isBreak: false },
+  { start: '11:00', end: '13:30', isBreak: false },
+  { start: '13:30', end: '16:00', isBreak: false },
   { start: '16:00', end: '18:30', isBreak: false },
 ];
 
@@ -115,7 +119,7 @@ interface SessionFormState {
 const emptySessionForm: SessionFormState = {
   jour: 'lundi',
   heure_debut: '08:30',
-  heure_fin: '10:30',
+  heure_fin: '11:00',
   group_id: '',
   module_id: '',
   formateur_id: '',
@@ -125,7 +129,8 @@ const emptySessionForm: SessionFormState = {
 const EmploiDuTempsPage: React.FC = () => {
   const basePath = useRolePath();
   const { user } = useAuth();
-  const canWrite = user?.role === 'surveillant';
+  // Scheduling is Directeur-only. Surveillant + Formateur consult but don't edit.
+  const canWrite = user?.role === 'directeur';
   const [formateur, setFormateur] = useState('');
   const [filiere, setFiliere] = useState('');
   const [groupe, setGroupe] = useState('');
@@ -255,6 +260,21 @@ const EmploiDuTempsPage: React.FC = () => {
   const activeFiltersCount = [formateur, filiere, groupe].filter(Boolean).length;
   const totalSessions = filteredEntries.length;
 
+  // Masse horaire: sum minutes of the filtered entries. Only meaningful when
+  // a single formateur is selected — that's when OFPPT's 30h rule applies.
+  const formateurMinutes = useMemo(() => {
+    if (!formateur) return 0;
+    const toMin = (t: string) => {
+      const [h, m] = (t || '').slice(0, 5).split(':').map(n => parseInt(n, 10));
+      return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+    };
+    return weekEntries
+      .filter(e => e.formateurId === Number(formateur))
+      .reduce((sum, e) => sum + Math.max(0, toMin(e.heureFin) - toMin(e.heureDebut)), 0);
+  }, [formateur, weekEntries]);
+  const formateurHours = Math.round((formateurMinutes / 60) * 10) / 10;
+  const WEEKLY_CAP_HOURS = 30;
+
   const clearFilters = () => { setFormateur(''); setFiliere(''); setGroupe(''); };
 
   const handleExport = () => {
@@ -262,47 +282,157 @@ const EmploiDuTempsPage: React.FC = () => {
       toast.error('Aucune séance à exporter');
       return;
     }
-    const dayOrder: Record<string, number> = { lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
-    const rows = [...filteredEntries]
-      .sort((a, b) => {
-        const da = dayOrder[a.jour.toLowerCase()] ?? 99;
-        const db = dayOrder[b.jour.toLowerCase()] ?? 99;
-        if (da !== db) return da - db;
-        return (a.heureDebut || '').localeCompare(b.heureDebut || '');
-      })
-      .map((e, i) => ({
-        '#': i + 1,
-        'Jour': e.jour.charAt(0).toUpperCase() + e.jour.slice(1),
-        'Heure début': (e.heureDebut || '').slice(0, 5),
-        'Heure fin':   (e.heureFin || '').slice(0, 5),
-        'Module':    e.module || '',
-        'Groupe':    e.groupe || '',
-        'Formateur': e.formateur || '',
-        'Salle':     e.type === 'a_distance' ? 'À distance' : (e.salle || ''),
-        'Type':      e.type === 'a_distance' ? 'À distance' : 'Présentiel',
-      }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{ wch: 5 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 28 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Emploi');
+    // Map each Tailwind border class to a concrete hex so the print window
+    // (which doesn't load our Tailwind build) still colors the left rail on
+    // every cell the same way as the live grid.
+    const colorHex: Record<string, string> = {
+      'bg-blue-500':    '#3b82f6',
+      'bg-emerald-500': '#10b981',
+      'bg-pink-500':    '#ec4899',
+      'bg-teal-600':    '#0d9488',
+      'bg-amber-600':   '#d97706',
+      'bg-indigo-600':  '#4f46e5',
+      'bg-purple-500':  '#a855f7',
+      'bg-orange-500':  '#f97316',
+    };
+    const moduleColor = (name: string) => colorHex[getColor(name).border] || '#6366f1';
 
-    const weekLabel = WEEKS.find(w => w.id === semaine)?.label?.replace(/\s+/g, '_') || semaine;
+    const weekLabel = WEEKS.find(w => w.id === semaine)?.label || semaine;
     const scopeBits: string[] = [];
     if (formateur) {
       const f = formateursList.find(x => x.id === Number(formateur));
-      if (f) scopeBits.push(f.nom.replace(/\s+/g, '_'));
+      if (f) scopeBits.push(`Formateur : ${f.nom}`);
     }
     if (filiere) {
       const f = filieres.find((x: any) => String(x.id) === filiere);
-      if (f) scopeBits.push(f.nom.replace(/\s+/g, '_'));
+      if (f) scopeBits.push(`Filière : ${f.nom}`);
     }
     if (groupe) {
       const g = groupes.find((x: any) => String(x.id) === groupe);
-      if (g) scopeBits.push(g.nom.replace(/\s+/g, '_'));
+      if (g) scopeBits.push(`Groupe : ${g.nom}`);
     }
-    const scope = scopeBits.length > 0 ? `_${scopeBits.join('_')}` : '';
-    XLSX.writeFile(wb, `Emploi_${weekLabel}${scope}.xlsx`);
-    toast.success(`${rows.length} séance(s) exportée(s)`);
+    const scopeLabel = scopeBits.length > 0 ? scopeBits.join(' • ') : 'Tous les formateurs, filières et groupes';
+
+    // Total hours = sum of all filtered session durations (covers the selected
+    // week + any active filters, matching what the grid actually displays).
+    const toMin = (t: string) => {
+      const [h, m] = (t || '').slice(0, 5).split(':').map(n => parseInt(n, 10));
+      return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+    };
+    const totalMinutes = filteredEntries.reduce(
+      (acc, e) => acc + Math.max(0, toMin(e.heureFin) - toMin(e.heureDebut)),
+      0
+    );
+    const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
+
+    // Build the grid as an HTML table that mirrors the on-screen one.
+    const renderCell = (day: string, slotIdx: number): string => {
+      const isSaturday = day === 'Samedi';
+      const isSaturdayAfternoon = isSaturday && slotIdx >= 2;
+      if (isSaturdayAfternoon) {
+        return `<td class="cell closed"><span class="closed-label">Fermé</span></td>`;
+      }
+      const cellEntries = filteredEntries.filter(
+        e => e.jour.toLowerCase() === day.toLowerCase() && e.slot === slotIdx
+      );
+      if (cellEntries.length === 0) return `<td class="cell"></td>`;
+      const cards = cellEntries.map(entry => {
+        const col = moduleColor(entry.module);
+        const venue = entry.type === 'a_distance' ? 'à distance' : (entry.salle || 'Salle non assignée');
+        return `
+          <div class="card" style="border-left-color: ${col};">
+            <div class="m">${escapeHtml(entry.module || '—')}</div>
+            <div class="t">${escapeHtml(entry.heureDebut || '')} → ${escapeHtml(entry.heureFin || '')}</div>
+            <div class="g">${escapeHtml(entry.groupe)} · ${escapeHtml(venue)}</div>
+            <div class="f">${escapeHtml(entry.formateur || '')}</div>
+          </div>`;
+      }).join('');
+      return `<td class="cell">${cards}</td>`;
+    };
+
+    const gridRows = timeSlots.map((slot, slotIdx) => {
+      const dayCells = days.map(day => renderCell(day, slotIdx)).join('');
+      return `
+        <tr>
+          <td class="time-col">
+            <div class="t-start">${escapeHtml(slot.start)}</div>
+            <div class="t-end">${escapeHtml(slot.end)}</div>
+          </td>
+          ${dayCells}
+        </tr>`;
+    }).join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Emploi du temps</title>
+<style>
+  @page { size: A4 landscape; margin: 10mm; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 14px 18px; color: #111827; }
+  h1 { font-size: 16px; margin: 0 0 2px; font-weight: 700; }
+  .sub { color: #6b7280; font-size: 10px; margin-bottom: 10px; }
+  .sub b { color: #111827; }
+  table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+  table.grid thead th {
+    background: #f9fafb; border: 1px solid #e5e7eb; padding: 6px 4px;
+    font-weight: 700; color: #374151; text-align: center; font-size: 9.5px;
+  }
+  table.grid th.time-col, table.grid td.time-col { width: 56px; }
+  table.grid td.cell {
+    border: 1px solid #e5e7eb; padding: 3px; vertical-align: top;
+    height: 100px; background: #fff;
+  }
+  table.grid td.cell.closed { background: #f3f4f6; text-align: center; }
+  .closed-label { color: #9ca3af; font-style: italic; font-size: 9px; }
+  table.grid td.time-col {
+    background: #f9fafb; border: 1px solid #e5e7eb; padding: 4px;
+    text-align: center; vertical-align: top;
+  }
+  .t-start { font-weight: 700; color: #111827; font-size: 10px; }
+  .t-end { color: #9ca3af; font-size: 9px; margin-top: 1px; }
+  .card {
+    border-left: 3px solid #6366f1; padding: 3px 5px; margin-bottom: 3px;
+    border-radius: 2px; background: #fff;
+  }
+  .card .m { font-weight: 600; color: #111827; font-size: 9px; line-height: 1.2; }
+  .card .t { color: #4f46e5; font-size: 8.5px; font-weight: 600; margin-top: 1px; }
+  .card .g, .card .f { color: #6b7280; font-size: 8px; margin-top: 1px; line-height: 1.2; }
+  .totals {
+    margin-top: 10px; padding: 8px 12px;
+    background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: #374151;
+  }
+  .totals .big { font-size: 14px; font-weight: 700; color: #111827; }
+  @media print {
+    body { padding: 0; }
+    tr, .card { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+  }
+</style></head><body>
+<h1>Emploi du temps — ${escapeHtml(weekLabel)}</h1>
+<div class="sub">${escapeHtml(scopeLabel)} &nbsp;•&nbsp; Imprimé le ${escapeHtml(new Date().toLocaleString('fr-FR'))}</div>
+<table class="grid">
+  <thead>
+    <tr>
+      <th class="time-col">Horaire</th>
+      ${days.map(d => `<th>${escapeHtml(d)}</th>`).join('')}
+    </tr>
+  </thead>
+  <tbody>${gridRows}</tbody>
+</table>
+<div class="totals">
+  <span>${filteredEntries.length} séance(s) affichée(s)</span>
+  <span>Total : <span class="big">${totalHours}h</span>${formateur ? ` / ${WEEKLY_CAP_HOURS}h` : ''}</span>
+</div>
+<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=1200,height=800');
+    if (!w) {
+      toast.error('Autorisez les pop-ups pour exporter');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
   // ── CRUD: load modules for the selected group when form opens
@@ -490,8 +620,9 @@ const EmploiDuTempsPage: React.FC = () => {
             onClick={handleExport}
             disabled={filteredEntries.length === 0}
             className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Ouvre la boîte d'impression — enregistrez en PDF"
           >
-            <HiDownload className="h-4 w-4" /> Export Excel
+            <HiPrinter className="h-4 w-4" /> Export PDF
           </button>
           {canWrite && (
             <button
@@ -511,6 +642,22 @@ const EmploiDuTempsPage: React.FC = () => {
             {loading ? '...' : `${totalSessions} séance${totalSessions > 1 ? 's' : ''}`}
             {activeFiltersCount > 0 && ' (filtré)'}
           </span>
+
+          {formateur && (
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
+                formateurHours >= WEEKLY_CAP_HOURS
+                  ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
+                  : formateurHours >= 24
+                    ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                    : 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 border-primary-200 dark:border-primary-800'
+              }`}
+              title="Masse horaire hebdomadaire de ce formateur (cap OFPPT : 30h)"
+            >
+              Masse horaire : {formateurHours}h / {WEEKLY_CAP_HOURS}h
+              {formateurHours >= WEEKLY_CAP_HOURS && ' · plein'}
+            </span>
+          )}
 
           <div className="flex-1" />
 
@@ -580,27 +727,7 @@ const EmploiDuTempsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {timeSlots.map((slot, slotIdx) => {
-                  if (slot.isBreak) {
-                    return (
-                      <tr key={slotIdx} className="border-b border-gray-50 dark:border-gray-700 bg-amber-50/40 dark:bg-amber-900/10">
-                        <td className="px-4 py-3 align-middle w-24">
-                          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{slot.start}</div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{slot.end}</div>
-                        </td>
-                        <td colSpan={days.length} className="px-4 py-4 text-center">
-                          <span className="inline-flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 font-medium">
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                              <path strokeWidth={2} d="M12 6v6l4 2" />
-                            </svg>
-                            {slot.label || 'Pause'} ({slot.start} – {slot.end})
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  }
-                  return (
+                {timeSlots.map((slot, slotIdx) => (
                   <tr key={slotIdx} className="border-b border-gray-50 dark:border-gray-700">
                     <td className="px-4 py-3 align-top w-24">
                       <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{slot.start}</div>
@@ -672,34 +799,10 @@ const EmploiDuTempsPage: React.FC = () => {
                       );
                     })}
                   </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 px-6 py-4">
-          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
-            <span className="inline-block px-2.5 py-0.5 bg-primary-600 text-white rounded text-xs font-medium mb-2">Morning Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
-              10:30 to 10:50 AM
-            </div>
-          </div>
-          <div className="border border-gray-100 dark:border-gray-700 rounded-lg p-4">
-            <span className="inline-block px-2.5 py-0.5 bg-red-500 text-white rounded text-xs font-medium mb-2">Afternoon Break</span>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
-              12:30 PM to 14:00 PM
-            </div>
-          </div>
         </div>
       </div>
 

@@ -4,12 +4,43 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\EmploiDuTemps;
+use App\Models\Salle;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 
 class EmploiDuTempsController extends Controller
 {
     use ApiResponse;
+
+    /** OFPPT rule: a formateur teaches at most 30h per week (= 1800 minutes). */
+    private const FORMATEUR_WEEKLY_CAP_MINUTES = 1800;
+
+    /**
+     * Minutes between two "HH:MM" strings. Carbon's diff would work too but
+     * would cost an extra parse per call; raw math is enough for our slots.
+     */
+    private function minutesBetween(string $start, string $end): int
+    {
+        [$sh, $sm] = array_map('intval', explode(':', substr($start, 0, 5)));
+        [$eh, $em] = array_map('intval', explode(':', substr($end, 0, 5)));
+        return max(0, ($eh * 60 + $em) - ($sh * 60 + $sm));
+    }
+
+    /**
+     * Total scheduled minutes for a formateur across the whole week, excluding
+     * the given session id (so update() can compare "after replacing self").
+     */
+    private function formateurWeeklyMinutes(int $formateurId, ?int $excludeId = null): int
+    {
+        $rows = EmploiDuTemps::where('formateur_id', $formateurId)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->get(['heure_debut', 'heure_fin']);
+        $total = 0;
+        foreach ($rows as $r) {
+            $total += $this->minutesBetween((string) $r->heure_debut, (string) $r->heure_fin);
+        }
+        return $total;
+    }
 
     public function index(Request $request)
     {
@@ -50,6 +81,12 @@ class EmploiDuTempsController extends Controller
             'heure_fin' => 'required|date_format:H:i|after:heure_debut',
         ]);
 
+        // Reject indisponible salles (hors service / en rénovation).
+        $salle = Salle::find($validated['salle_id']);
+        if ($salle && ! $salle->is_active) {
+            return $this->error('Cette salle est marquée indisponible' . ($salle->motif_indisponibilite ? ' : ' . $salle->motif_indisponibilite : '.'), 422);
+        }
+
         // Check conflicts
         $conflict = EmploiDuTemps::where('jour', $validated['jour'])
             ->where(function ($q) use ($validated) {
@@ -65,6 +102,17 @@ class EmploiDuTempsController extends Controller
 
         if ($conflict) {
             return $this->error('Conflit détecté dans l\'emploi du temps', 422);
+        }
+
+        // Enforce 30h/week cap for the formateur.
+        $addingMinutes = $this->minutesBetween($validated['heure_debut'], $validated['heure_fin']);
+        $existingMinutes = $this->formateurWeeklyMinutes($validated['formateur_id']);
+        if ($existingMinutes + $addingMinutes > self::FORMATEUR_WEEKLY_CAP_MINUTES) {
+            $currentH = round($existingMinutes / 60, 1);
+            return $this->error(
+                "Ce formateur atteint déjà {$currentH}h / 30h cette semaine. Ajouter cette séance dépasserait la limite OFPPT.",
+                422
+            );
         }
 
         $entry = EmploiDuTemps::create($validated);
@@ -96,6 +144,14 @@ class EmploiDuTempsController extends Controller
             'heure_fin'    => $emploiDuTemp->heure_fin,
         ], $validated);
 
+        // Block switching to an indisponible salle.
+        if (array_key_exists('salle_id', $validated)) {
+            $salle = Salle::find($final['salle_id']);
+            if ($salle && ! $salle->is_active) {
+                return $this->error('Cette salle est marquée indisponible' . ($salle->motif_indisponibilite ? ' : ' . $salle->motif_indisponibilite : '.'), 422);
+            }
+        }
+
         $conflict = EmploiDuTemps::where('id', '!=', $emploiDuTemp->id)
             ->where('jour', $final['jour'])
             ->where(function ($q) use ($final) {
@@ -111,6 +167,17 @@ class EmploiDuTempsController extends Controller
 
         if ($conflict) {
             return $this->error('Conflit détecté dans l\'emploi du temps (salle, formateur ou groupe déjà pris à ce créneau)', 422);
+        }
+
+        // Re-check the 30h/week cap on the final state, excluding self.
+        $finalMinutes = $this->minutesBetween($final['heure_debut'], $final['heure_fin']);
+        $existingMinutes = $this->formateurWeeklyMinutes($final['formateur_id'], $emploiDuTemp->id);
+        if ($existingMinutes + $finalMinutes > self::FORMATEUR_WEEKLY_CAP_MINUTES) {
+            $currentH = round($existingMinutes / 60, 1);
+            return $this->error(
+                "Ce formateur atteint déjà {$currentH}h / 30h cette semaine. Cette modification dépasserait la limite OFPPT.",
+                422
+            );
         }
 
         $emploiDuTemp->update($validated);

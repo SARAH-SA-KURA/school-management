@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EmploiDuTemps;
 use App\Models\Formateur;
 use App\Models\User;
 use App\Traits\ApiResponse;
@@ -16,7 +17,7 @@ class FormateurController extends Controller
 
     public function index(Request $request)
     {
-        $query = Formateur::with(['user', 'modules.filiere']);
+        $query = Formateur::with(['user', 'modules.filiere', 'groups.filiere']);
 
         if ($request->has('search')) {
             $search = $request->search;
@@ -41,7 +42,36 @@ class FormateurController extends Controller
             $query->orderBy($sortBy, $sortDir);
         }
 
-        return $this->paginated($query, $request);
+        $paginated = $this->paginated($query, $request);
+
+        // Attach weekly_hours (sum of scheduled session minutes / 60) to every
+        // formateur so the list can show a "X / 30h" charge badge and flag the
+        // ones already at the OFPPT cap.
+        $formateurs = collect($paginated->getData()->data ?? []);
+        if ($formateurs->isNotEmpty()) {
+            $ids = $formateurs->pluck('id')->all();
+            $rows = EmploiDuTemps::whereIn('formateur_id', $ids)
+                ->get(['formateur_id', 'heure_debut', 'heure_fin']);
+
+            $minutesByFormateur = [];
+            foreach ($rows as $r) {
+                [$sh, $sm] = array_map('intval', explode(':', substr((string) $r->heure_debut, 0, 5)));
+                [$eh, $em] = array_map('intval', explode(':', substr((string) $r->heure_fin, 0, 5)));
+                $minutes = max(0, ($eh * 60 + $em) - ($sh * 60 + $sm));
+                $minutesByFormateur[$r->formateur_id] = ($minutesByFormateur[$r->formateur_id] ?? 0) + $minutes;
+            }
+
+            $payload = $paginated->getData(true);
+            foreach ($payload['data'] as &$item) {
+                $mins = $minutesByFormateur[$item['id']] ?? 0;
+                $item['weekly_hours'] = round($mins / 60, 1);
+                $item['is_weekly_full'] = $mins >= 1800; // 30h = at cap
+            }
+            unset($item);
+            return response()->json($payload);
+        }
+
+        return $paginated;
     }
 
     public function store(Request $request)
@@ -57,6 +87,8 @@ class FormateurController extends Controller
             'date_recrutement' => 'required|date',
             'module_ids' => 'nullable|array',
             'module_ids.*' => 'exists:modules,id',
+            'group_ids' => 'nullable|array',
+            'group_ids.*' => 'exists:groups,id',
         ]);
 
         $formateur = DB::transaction(function () use ($validated) {
@@ -79,18 +111,21 @@ class FormateurController extends Controller
             if (!empty($validated['module_ids'])) {
                 $formateur->modules()->sync($validated['module_ids']);
             }
+            if (!empty($validated['group_ids'])) {
+                $formateur->groups()->sync($validated['group_ids']);
+            }
 
             return $formateur;
         });
 
-        $formateur->load(['user', 'modules']);
+        $formateur->load(['user', 'modules.filiere', 'groups.filiere']);
 
         return $this->success($formateur, 'Formateur créé avec succès', 201);
     }
 
     public function show(Formateur $formateur)
     {
-        $formateur->load(['user', 'modules.filiere']);
+        $formateur->load(['user', 'modules.filiere', 'groups.filiere']);
         return $this->success($formateur);
     }
 
@@ -107,6 +142,8 @@ class FormateurController extends Controller
             'is_active' => 'boolean',
             'module_ids' => 'nullable|array',
             'module_ids.*' => 'exists:modules,id',
+            'group_ids' => 'nullable|array',
+            'group_ids.*' => 'exists:groups,id',
         ]);
 
         DB::transaction(function () use ($validated, $formateur) {
@@ -120,12 +157,15 @@ class FormateurController extends Controller
                 $formateur->update($formateurFields);
             }
 
-            if (isset($validated['module_ids'])) {
-                $formateur->modules()->sync($validated['module_ids']);
+            if (array_key_exists('module_ids', $validated)) {
+                $formateur->modules()->sync($validated['module_ids'] ?? []);
+            }
+            if (array_key_exists('group_ids', $validated)) {
+                $formateur->groups()->sync($validated['group_ids'] ?? []);
             }
         });
 
-        $formateur->load(['user', 'modules']);
+        $formateur->load(['user', 'modules.filiere', 'groups.filiere']);
 
         return $this->success($formateur, 'Formateur mis à jour');
     }
@@ -152,5 +192,43 @@ class FormateurController extends Controller
             ->get(['id', 'user_id', 'matricule', 'specialisation']);
 
         return $this->success($formateurs);
+    }
+
+    /**
+     * Groups explicitly assigned to the authenticated formateur.
+     * Used by Formateur-side pages (Absences, Examens, etc.) to avoid fetching
+     * the entire /groups list and doing client-side narrowing.
+     */
+    public function myGroups(Request $request)
+    {
+        $user = $request->user();
+        $formateur = Formateur::where('user_id', $user->id)->first();
+        if (!$formateur) {
+            return $this->error('Formateur record not found', 404);
+        }
+        return $this->success(
+            $formateur->groups()->with('filiere:id,nom,code')->get()
+        );
+    }
+
+    /**
+     * Stagiaires in groups explicitly assigned to the authenticated formateur.
+     */
+    public function myStagiaires(Request $request)
+    {
+        $user = $request->user();
+        $formateur = Formateur::where('user_id', $user->id)->first();
+        if (!$formateur) {
+            return $this->error('Formateur record not found', 404);
+        }
+
+        $groupIds = $formateur->groups()->pluck('groups.id');
+
+        $stagiaires = \App\Models\Stagiaire::with(['user:id,nom,prenom,email,telephone', 'group:id,nom,filiere_id', 'group.filiere:id,nom'])
+            ->whereIn('group_id', $groupIds)
+            ->when($request->has('group_id') && $request->group_id !== '', fn ($q) => $q->where('group_id', $request->group_id))
+            ->get();
+
+        return $this->success($stagiaires);
     }
 }

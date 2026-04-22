@@ -44,28 +44,21 @@ class FiliereController extends Controller
             'niveau' => 'nullable|string|max:255',
             'secteur' => 'nullable|string|max:255',
             'is_active' => 'boolean',
-            'modules' => 'nullable|array',
-            'modules.*.nom' => 'required_with:modules|string|max:255',
-            'modules.*.heures_total' => 'required_with:modules|integer|min:0',
-            'modules.*.coefficient' => 'nullable|numeric|min:0',
-            'modules.*.semestre' => 'nullable|integer|min:1',
+            'module_ids' => 'nullable|array',
+            'module_ids.*' => 'exists:modules,id',
         ]);
 
-        $modulesData = $validated['modules'] ?? [];
-        unset($validated['modules']);
+        $moduleIds = $validated['module_ids'] ?? [];
+        unset($validated['module_ids']);
 
-        $filiere = DB::transaction(function () use ($validated, $modulesData) {
+        $filiere = DB::transaction(function () use ($validated, $moduleIds) {
             $filiere = Filiere::create($validated);
 
-            foreach ($modulesData as $i => $m) {
-                Module::create([
-                    'code' => $this->uniqueModuleCode($filiere->code, $i + 1),
-                    'nom' => $m['nom'],
-                    'heures_total' => $m['heures_total'],
-                    'coefficient' => $m['coefficient'] ?? 1,
-                    'semestre' => $m['semestre'] ?? 1,
-                    'filiere_id' => $filiere->id,
-                ]);
+            // Attach = move: every checked module has its filiere_id reassigned
+            // to this new filière. (Schema keeps filiere_id NOT NULL, so a
+            // module always belongs to exactly one filière at a time.)
+            if (!empty($moduleIds)) {
+                Module::whereIn('id', $moduleIds)->update(['filiere_id' => $filiere->id]);
             }
 
             return $filiere;
@@ -76,21 +69,10 @@ class FiliereController extends Controller
         return $this->success($filiere, 'Filière créée avec succès', 201);
     }
 
-    private function uniqueModuleCode(string $filiereCode, int $index): string
-    {
-        $base = $filiereCode . '-M' . str_pad((string) $index, 2, '0', STR_PAD_LEFT);
-        $code = $base;
-        $n = 1;
-        while (Module::where('code', $code)->exists()) {
-            $n++;
-            $code = $base . chr(64 + $n); // -M01A, -M01B, ...
-        }
-        return $code;
-    }
-
     public function show(Filiere $filiere)
     {
         $filiere->loadCount(['groups', 'modules']);
+        $filiere->load('modules:id,nom,code,filiere_id,heures_total,coefficient,semestre');
         return $this->success($filiere);
     }
 
@@ -104,9 +86,25 @@ class FiliereController extends Controller
             'niveau' => 'nullable|string|max:255',
             'secteur' => 'nullable|string|max:255',
             'is_active' => 'boolean',
+            'module_ids' => 'nullable|array',
+            'module_ids.*' => 'exists:modules,id',
         ]);
 
-        $filiere->update($validated);
+        $moduleIds = array_key_exists('module_ids', $validated) ? $validated['module_ids'] : null;
+        unset($validated['module_ids']);
+
+        DB::transaction(function () use ($validated, $filiere, $moduleIds) {
+            if (!empty($validated)) {
+                $filiere->update($validated);
+            }
+
+            // Attach-only semantics: any checked module is moved to this filière.
+            // Unchecking a pre-attached module does NOT detach it here — the
+            // Directeur must attach it to another filière to move it.
+            if (is_array($moduleIds) && !empty($moduleIds)) {
+                Module::whereIn('id', $moduleIds)->update(['filiere_id' => $filiere->id]);
+            }
+        });
 
         return $this->success($filiere, 'Filière mise à jour');
     }

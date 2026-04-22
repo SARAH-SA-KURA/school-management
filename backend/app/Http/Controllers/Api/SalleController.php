@@ -37,7 +37,14 @@ class SalleController extends Controller
             'batiment' => 'nullable|string',
             'equipements' => 'nullable|array',
             'is_active' => 'boolean',
+            'motif_indisponibilite' => 'nullable|string|max:500',
         ]);
+
+        // A room is either disponible (is_active=true, no motif) or
+        // indisponible (is_active=false, motif optional). Clear motif when available.
+        if (($validated['is_active'] ?? true) === true) {
+            $validated['motif_indisponibilite'] = null;
+        }
 
         $salle = Salle::create($validated);
 
@@ -58,7 +65,13 @@ class SalleController extends Controller
             'batiment' => 'nullable|string',
             'equipements' => 'nullable|array',
             'is_active' => 'boolean',
+            'motif_indisponibilite' => 'nullable|string|max:500',
         ]);
+
+        // Disponible rooms never carry a motif — clear it if we're flipping back.
+        if (array_key_exists('is_active', $validated) && $validated['is_active'] === true) {
+            $validated['motif_indisponibilite'] = null;
+        }
 
         $salle->update($validated);
 
@@ -73,6 +86,8 @@ class SalleController extends Controller
 
     public function all()
     {
+        // Only disponibles — indisponible rooms should never appear in pickers
+        // (emploi, examens). Directeur can still see them via /salles (index).
         return $this->success(Salle::where('is_active', true)->get(['id', 'nom', 'type', 'capacite']));
     }
 }

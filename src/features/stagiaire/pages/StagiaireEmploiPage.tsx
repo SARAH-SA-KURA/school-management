@@ -27,10 +27,10 @@ interface ScheduleEntry {
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const daysLower = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const timeSlots = [
-  { start: '08:30', end: '10:50' },
-  { start: '11:10', end: '13:20' },
-  { start: '13:30', end: '15:50' },
-  { start: '16:10', end: '18:30' },
+  { start: '08:30', end: '11:00' },
+  { start: '11:00', end: '13:30' },
+  { start: '13:30', end: '16:00' },
+  { start: '16:00', end: '18:30' },
 ];
 
 const WEEKS = [
@@ -53,10 +53,10 @@ const COLOR_SCHEMES = [
 const toHHMM = (t: string) => (t || '').slice(0, 5);
 
 const getSlotIndex = (heureDebut: string): number => {
-  const h = parseInt(heureDebut.split(':')[0], 10);
-  if (h < 10) return 0;
-  if (h < 13) return 1;
-  if (h < 16) return 2;
+  const t = (heureDebut || '').slice(0, 5);
+  if (t < '11:00') return 0;
+  if (t < '13:30') return 1;
+  if (t < '16:00') return 2;
   return 3;
 };
 

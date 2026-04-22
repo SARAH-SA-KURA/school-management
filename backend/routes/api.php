@@ -45,7 +45,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── Self-scoped endpoints ──
     Route::middleware('role:formateur')->group(function () {
-        Route::get('/auth/formateur', [AuthController::class, 'formateur']);
+        Route::get('/auth/formateur',     [AuthController::class, 'formateur']);
+        Route::get('/formateur/groups',     [FormateurController::class, 'myGroups']);
+        Route::get('/formateur/stagiaires', [FormateurController::class, 'myStagiaires']);
     });
 
     Route::middleware('role:stagiaire')->group(function () {
@@ -105,6 +107,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/absences',                          [AbsenceController::class, 'index']);
         Route::get('/absences/stats',                    [AbsenceController::class, 'stats']);
+        Route::get('/absences/summary',                  [AbsenceController::class, 'summary']);
         Route::get('/absences/warnings',                 [AbsenceController::class, 'warnings']);
     });
 
@@ -143,7 +146,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Directeur + Surveillant — operational writes
-    // (groupes, stagiaires, emploi du temps, absence consolidation)
+    // (groupes, stagiaires, absence consolidation). Emploi du temps is
+    // Directeur-only below — the Surveillant views but doesn't schedule.
     Route::middleware('role:directeur,surveillant')->group(function () {
         Route::post  ('/groups',             [GroupController::class, 'store']);
         Route::match (['put','patch'], '/groups/{group}', [GroupController::class, 'update']);
@@ -154,18 +158,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match (['put','patch'], '/stagiaires/{stagiaire}', [StagiaireController::class, 'update']);
         Route::delete('/stagiaires/{stagiaire}', [StagiaireController::class, 'destroy']);
 
+    });
+
+    // Emploi du temps writes — Directeur only (scheduling authority sits here).
+    Route::middleware('role:directeur')->group(function () {
         Route::post  ('/emploi-du-temps',    [EmploiDuTempsController::class, 'store']);
         Route::match (['put','patch'], '/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'update']);
         Route::delete('/emploi-du-temps/{emploiDuTemp}', [EmploiDuTempsController::class, 'destroy']);
-
-        Route::delete('/examens/{examen}',   [ExamenController::class, 'destroy']);
     });
 
-    // Directeur + Surveillant + Formateur — examen records
-    // (formateur creates/updates exams for their own modules)
-    Route::middleware('role:directeur,surveillant,formateur')->group(function () {
+    // Examens — Formateur is the primary author (schedules exams based on his
+    // progress with students). Directeur retained as backend override only;
+    // Surveillant can no longer CUD exams.
+    Route::middleware('role:directeur,formateur')->group(function () {
         Route::post  ('/examens',            [ExamenController::class, 'store']);
         Route::match (['put','patch'], '/examens/{examen}', [ExamenController::class, 'update']);
+        Route::delete('/examens/{examen}',   [ExamenController::class, 'destroy']);
     });
 
     // Directeur + Surveillant + Formateur — absence entries
@@ -182,5 +190,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:directeur,formateur')->group(function () {
         Route::post('/notes/batch',   [NoteController::class, 'batchStore']);
         Route::put ('/notes/{note}',  [NoteController::class, 'update']);
+    });
+
+    // Notes validation dashboard. Read opens to all three roles so the
+    // Formateur's UI can detect whether his module is locked and adjust.
+    Route::middleware('role:directeur,surveillant,formateur')->group(function () {
+        Route::get ('/notes/group-modules-status', [NoteController::class, 'groupModulesStatus']);
+    });
+    // Only the Directeur can flip the validation state.
+    Route::middleware('role:directeur')->group(function () {
+        Route::post('/notes/validate',   [NoteController::class, 'validateGroupModule']);
+        Route::post('/notes/unvalidate', [NoteController::class, 'unvalidateGroupModule']);
     });
 });

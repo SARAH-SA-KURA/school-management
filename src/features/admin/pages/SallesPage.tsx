@@ -12,7 +12,7 @@ import { useCan } from '../../../hooks/useCan';
 
 const DISPONIBILITE_OPTIONS = [
   { value: 'disponible', label: 'Disponible' },
-  { value: 'occupee', label: 'Occupée' },
+  { value: 'indisponible', label: 'Indisponible' },
 ];
 
 const SallesPage: React.FC = () => {
@@ -34,7 +34,7 @@ const SallesPage: React.FC = () => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const debouncedSearch = useDebounce(search);
-  const [form, setForm] = useState({ nom: '', type: 'cours', capacite: 30, disponibilite: 'disponible' });
+  const [form, setForm] = useState({ nom: '', type: 'cours', capacite: 30, disponibilite: 'disponible', motif: '' });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -63,13 +63,32 @@ const SallesPage: React.FC = () => {
 
   const toggleSort = () => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setPage(1); };
 
-  const openCreate = () => { setSelected(null); setForm({ nom: '', type: 'cours', capacite: 30, disponibilite: 'disponible' }); setModalOpen(true); };
-  const openEdit = (item: Salle) => { setSelected(item); setForm({ nom: item.nom, type: item.type, capacite: item.capacite, disponibilite: item.is_active ? 'disponible' : 'occupee' }); setModalOpen(true); setOpenMenuId(null); };
+  const openCreate = () => { setSelected(null); setForm({ nom: '', type: 'cours', capacite: 30, disponibilite: 'disponible', motif: '' }); setModalOpen(true); };
+  const openEdit = (item: Salle) => {
+    setSelected(item);
+    setForm({
+      nom: item.nom,
+      type: item.type,
+      capacite: item.capacite,
+      disponibilite: item.is_active ? 'disponible' : 'indisponible',
+      motif: item.motif_indisponibilite || '',
+    });
+    setModalOpen(true);
+    setOpenMenuId(null);
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = { nom: form.nom, type: form.type, capacite: form.capacite, batiment: '', is_active: form.disponibilite === 'disponible' };
+      const isAvailable = form.disponibilite === 'disponible';
+      const payload = {
+        nom: form.nom,
+        type: form.type,
+        capacite: form.capacite,
+        batiment: '',
+        is_active: isAvailable,
+        motif_indisponibilite: isAvailable ? null : (form.motif.trim() || null),
+      };
       if (selected) { await sallesApi.update(selected.id, payload as any); toast.success('Salle mise à jour'); }
       else { await sallesApi.create(payload as any); toast.success('Salle créée'); }
       setModalOpen(false); fetchData();
@@ -108,10 +127,20 @@ const SallesPage: React.FC = () => {
           Disponible
         </span>
       ) : (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400">
-          <span className="w-2 h-2 rounded-full bg-red-500"></span>
-          Occupée
-        </span>
+        <div className="flex flex-col items-start gap-1">
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+            title={item.motif_indisponibilite || 'Aucun motif précisé'}
+          >
+            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+            Indisponible
+          </span>
+          {item.motif_indisponibilite && (
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 italic max-w-[200px] truncate">
+              {item.motif_indisponibilite}
+            </span>
+          )}
+        </div>
       ),
     },
     ...(canWrite ? [{
@@ -200,6 +229,24 @@ const SallesPage: React.FC = () => {
           <Select label="Type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} options={SALLE_TYPES} required />
           <Input label="Capacité" type="number" value={String(form.capacite)} onChange={(e) => setForm({ ...form, capacite: Number(e.target.value) })} required />
           <Select label="Disponibilité" value={form.disponibilite} onChange={(e) => setForm({ ...form, disponibilite: e.target.value })} options={DISPONIBILITE_OPTIONS} required />
+          {form.disponibilite === 'indisponible' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Motif d'indisponibilité <span className="text-gray-400 font-normal">(optionnel)</span>
+              </label>
+              <textarea
+                value={form.motif}
+                onChange={(e) => setForm({ ...form, motif: e.target.value })}
+                rows={3}
+                maxLength={500}
+                placeholder="Ex: Projecteur en panne, rénovation en cours, climatisation HS..."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Cette salle n'apparaîtra plus dans les choix de l'emploi du temps ni des examens.
+              </p>
+            </div>
+          )}
         </div>
       </Modal>
 

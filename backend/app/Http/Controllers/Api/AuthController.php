@@ -217,7 +217,7 @@ class AuthController extends Controller
         }
 
         $formateur = Formateur::where('user_id', $user->id)
-            ->with(['modules.filiere'])
+            ->with(['modules.filiere', 'groups.filiere'])
             ->withCount([
                 'examens as examens_a_venir_count' => function ($q) {
                     $q->where('date_examen', '>=', now()->toDateString());
@@ -232,11 +232,14 @@ class AuthController extends Controller
             ], 404);
         }
 
-        // Count unique stagiaires in groups this formateur has exams for
-        $groupIds = \App\Models\Examen::where('formateur_id', $formateur->id)
-            ->pluck('group_id')
-            ->unique();
-        $formateur->total_stagiaires = \App\Models\Stagiaire::whereIn('group_id', $groupIds)->count();
+        // Total stagiaires = students in groups explicitly assigned to this
+        // formateur (via the formateur_group pivot). This works correctly for
+        // a brand-new formateur who has no exams yet but already has group
+        // assignments from the Directeur's UI.
+        $formateur->total_stagiaires = \App\Models\Stagiaire::whereIn(
+            'group_id',
+            $formateur->groups->pluck('id')
+        )->count();
 
         return response()->json([
             'success' => true,
