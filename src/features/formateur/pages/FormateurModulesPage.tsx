@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../hooks/useAuth';
-import { HiFilter, HiSortAscending, HiChevronUp, HiChevronDown, HiSearch, HiDownload, HiUpload } from 'react-icons/hi';
+import { HiSortAscending, HiChevronUp, HiChevronDown, HiSearch, HiDownload } from 'react-icons/hi';
 import axiosInstance from '../../../utils/axios';
 import toast from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 interface Module {
   id: number;
@@ -39,23 +37,11 @@ const FormateurModulesPage: React.FC = () => {
   const [filieres, setFilieres] = useState<any[]>([]);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
-        setExportDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const downloadTemplate = () => {
     const template = 'Code Module,Nom,Filière,Vol. Horaire,Groupes\nDEV-101,Développement Web Frontend,Informatique,40,DEV-101;DEV-102\nDEV-102,Développement Web Backend,Informatique,45,DEV-101;DEV-103\nBDD-101,Bases de Données,Informatique,35,DEV-102';
@@ -239,34 +225,6 @@ const FormateurModulesPage: React.FC = () => {
     }
   };
 
-  const exportToCSV = () => {
-    const headers = ['Code Module', 'Nom', 'Filière', 'Vol. Horaire', 'Groupes'];
-    const data = filteredModules.map(mod => [
-      mod.code,
-      mod.nom,
-      mod.filiere?.nom || '-',
-      mod.heures_total,
-      mod.groups?.map((g: any) => g.nom).join(', ') || '-'
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'modules.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    setExportDropdownOpen(false);
-    toast.success('Modules exported as CSV');
-  };
-
   const exportToExcel = () => {
     const headers = ['Code Module', 'Nom', 'Filière', 'Vol. Horaire', 'Groupes'];
     const data = filteredModules.map(mod => [
@@ -334,135 +292,11 @@ const FormateurModulesPage: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setExportDropdownOpen(false);
-    toast.success('Modules exported with professional formatting');
-  };
-
-  const exportToPDF = () => {
-    try {
-      if (!filteredModules || filteredModules.length === 0) {
-        toast.error('Aucun module à exporter');
-        return;
-      }
-
-      const doc = new jsPDF();
-      const headers = ['Code Module', 'Nom', 'Filière', 'Vol. Horaire', 'Groupes'];
-      const data = filteredModules.map(mod => [
-        mod.code || '',
-        mod.nom || '',
-        mod.filiere?.nom || '-',
-        `${mod.heures_total || 0}h`,
-        mod.groups?.map((g: any) => g.nom).join(', ') || '-'
-      ]);
-
-      // Add title
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(37, 99, 235);
-      doc.text('Modules', 14, 15);
-
-      // Add date
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(107, 114, 128);
-      doc.text(`Export généré le ${new Date().toLocaleDateString('fr-FR')}`, 14, 22);
-
-      // Use autoTable with proper syntax
-      try {
-        autoTable(doc, {
-          head: [headers],
-          body: data,
-          startY: 30,
-          theme: 'grid',
-          headStyles: {
-            fillColor: [37, 99, 235],
-            textColor: [255, 255, 255],
-            fontStyle: 'bold',
-            fontSize: 9,
-            cellPadding: 3,
-            halign: 'left'
-          },
-          bodyStyles: {
-            textColor: [31, 41, 55],
-            fontSize: 8,
-            cellPadding: 2
-          },
-          alternateRowStyles: {
-            fillColor: [249, 250, 251]
-          },
-          columnStyles: {
-            0: { cellWidth: 25 },
-            1: { cellWidth: 45 },
-            2: { cellWidth: 28 },
-            3: { cellWidth: 20 },
-            4: { cellWidth: 40 }
-          },
-          margin: { top: 30, right: 14, bottom: 20, left: 14 }
-        });
-      } catch (tableError) {
-        console.warn('autoTable error, using fallback:', tableError);
-        // Fallback: manual table creation
-        let yPos = 30;
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const colWidths = [25, 45, 28, 20, 40];
-        const rowHeight = 7;
-
-        // Draw header
-        doc.setFillColor(37, 99, 235);
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-
-        let xPos = 14;
-        headers.forEach((header, i) => {
-          doc.rect(xPos, yPos - 5, colWidths[i], rowHeight, 'F');
-          doc.text(header, xPos + 2, yPos, { maxWidth: colWidths[i] - 2 });
-          xPos += colWidths[i];
-        });
-
-        yPos += rowHeight;
-
-        // Draw rows
-        doc.setTextColor(31, 41, 55);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-
-        data.forEach((row, rowIndex) => {
-          if (yPos > pageHeight - 20) {
-            doc.addPage();
-            yPos = 20;
-          }
-
-          xPos = 14;
-          // Alternate row color
-          if (rowIndex % 2 === 0) {
-            doc.setFillColor(249, 250, 251);
-            doc.rect(14, yPos - 5, 158, rowHeight, 'F');
-          }
-
-          row.forEach((cell, colIndex) => {
-            doc.text(String(cell), xPos + 2, yPos, { maxWidth: colWidths[colIndex] - 2 });
-            xPos += colWidths[colIndex];
-          });
-
-          yPos += rowHeight;
-        });
-      }
-
-      // Save PDF
-      doc.save('modules.pdf');
-      setExportDropdownOpen(false);
-      toast.success('PDF téléchargé avec succès');
-    } catch (error) {
-      console.error('PDF Export Error:', error);
-      console.error('Error message:', (error as Error)?.message);
-      toast.error('Erreur lors de la génération du PDF');
-    }
+    toast.success('Export Excel téléchargé');
   };
 
   useEffect(() => {
     fetchModules();
-    fetchFilieres();
   }, []);
 
   useEffect(() => {
@@ -472,59 +306,25 @@ const FormateurModulesPage: React.FC = () => {
   const fetchModules = async () => {
     try {
       setLoading(true);
+      const res = await axiosInstance.get('/auth/formateur');
+      const formateur = res.data.data;
+      const mods: Module[] = formateur?.modules ?? [];
+      setModules(mods);
 
-      // Get current formateur's modules
-      const formateurRes = await axiosInstance.get('/auth/formateur');
-      const currentFormateur = formateurRes.data.data;
-
-      if (currentFormateur) {
-        // Demo modules list for different filieres
-        const demoModules = [
-          { id: 1, code: 'DEV-101', nom: 'Développement Web Frontend', heures_total: 40, coefficient: 3, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 1, nom: 'DEV-101' }, { id: 2, nom: 'DEV-102' }] },
-          { id: 2, code: 'DEV-102', nom: 'Développement Web Backend', heures_total: 45, coefficient: 3, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 1, nom: 'DEV-101' }, { id: 3, nom: 'DEV-103' }] },
-          { id: 3, code: 'BDD-101', nom: 'Bases de Données', heures_total: 35, coefficient: 2, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 2, nom: 'DEV-102' }] },
-          { id: 4, code: 'SYS-101', nom: 'Systèmes d\'Exploitation', heures_total: 30, coefficient: 2, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 3, nom: 'DEV-103' }, { id: 4, nom: 'DEV-104' }] },
-          { id: 5, code: 'RES-101', nom: 'Réseaux et Sécurité', heures_total: 40, coefficient: 3, filiere: { id: 2, nom: 'Génie Civil' }, groups: [{ id: 1, nom: 'DEV-101' }, { id: 4, nom: 'DEV-104' }] },
-          { id: 6, code: 'ALG-101', nom: 'Algorithmes et Structures', heures_total: 45, coefficient: 3, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 2, nom: 'DEV-102' }, { id: 3, nom: 'DEV-103' }] },
-          { id: 7, code: 'WEB-201', nom: 'Frameworks Web Modernes', heures_total: 50, coefficient: 4, filiere: { id: 2, nom: 'Génie Civil' }, groups: [{ id: 1, nom: 'DEV-101' }, { id: 2, nom: 'DEV-102' }, { id: 3, nom: 'DEV-103' }] },
-          { id: 8, code: 'MOB-101', nom: 'Développement Mobile', heures_total: 40, coefficient: 3, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 4, nom: 'DEV-104' }] },
-          { id: 9, code: 'API-101', nom: 'Architecture API REST', heures_total: 35, coefficient: 2, filiere: { id: 3, nom: 'Génie Mécanique' }, groups: [{ id: 1, nom: 'DEV-101' }, { id: 3, nom: 'DEV-103' }] },
-          { id: 10, code: 'DEV-201', nom: 'Programmation Avancée', heures_total: 42, coefficient: 3, filiere: { id: 1, nom: 'Informatique' }, groups: [{ id: 2, nom: 'DEV-102' }, { id: 4, nom: 'DEV-104' }] },
-          { id: 11, code: 'ML-101', nom: 'Machine Learning Intro', heures_total: 45, coefficient: 3, filiere: { id: 3, nom: 'Génie Mécanique' }, groups: [{ id: 1, nom: 'DEV-101' }] },
-          { id: 12, code: 'CLOUD-101', nom: 'Cloud Computing', heures_total: 38, coefficient: 3, filiere: { id: 2, nom: 'Génie Civil' }, groups: [{ id: 3, nom: 'DEV-103' }, { id: 4, nom: 'DEV-104' }] },
-        ];
-
-        // Combine API modules with demo modules
-        const apiModules = (currentFormateur.modules && currentFormateur.modules.length > 0)
-          ? currentFormateur.modules
-          : [];
-
-        // Combine all modules and add groups data if missing
-        const allModules = [...apiModules, ...demoModules];
-        const modulesWithData = allModules.map((mod: any, idx: number) => ({
-          ...mod,
-          id: mod.id || idx + 100,
-          groups: mod.groups && mod.groups.length > 0 ? mod.groups : [
-            { id: 1, nom: 'DEV-101', stagiaires_count: 25 },
-            { id: 2, nom: 'DEV-102', stagiaires_count: 22 }
-          ],
-        }));
-        setModules(modulesWithData);
-      }
+      // Derive the filières the formateur actually teaches — no global fetch
+      const uniqueFilieres = Array.from(
+        new Map(
+          mods
+            .filter((m: Module) => m.filiere?.id)
+            .map((m: Module) => [m.filiere.id, m.filiere])
+        ).values()
+      );
+      setFilieres(uniqueFilieres);
     } catch (error) {
       console.error('Error fetching modules:', error);
       toast.error('Erreur lors du chargement des modules');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchFilieres = async () => {
-    try {
-      const res = await axiosInstance.get('/filieres');
-      setFilieres(res.data.data);
-    } catch (error) {
-      console.error('Error fetching filieres:', error);
     }
   };
 
@@ -607,49 +407,13 @@ const FormateurModulesPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative" ref={exportRef}>
-            <button
-              onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
-              className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}>
-              <HiDownload className="h-4 w-4" /> Export
-            </button>
-            {exportDropdownOpen && (
-              <div className={`absolute right-0 mt-2 w-56 rounded-2xl shadow-xl border z-10 overflow-hidden ${isDark ? 'bg-gray-800/50 border-gray-700' : 'bg-white border-gray-200'}`}>
-                <div className={`px-4 py-3 border-b ${isDark ? 'border-gray-700 bg-gray-800/30' : 'border-gray-100 bg-gray-50'}`}>
-                  <p className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Format d'export</p>
-                </div>
-                <button
-                  onClick={exportToExcel}
-                  className={`w-full text-left px-4 py-3 text-sm font-medium transition-all duration-150 ${isDark ? 'hover:bg-primary-900/20 text-gray-300' : 'hover:bg-primary-50 text-gray-700'}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span>Excel (.xlsx)</span>
-                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>→</span>
-                  </div>
-                </button>
-                <button
-                  onClick={exportToCSV}
-                  className={`w-full text-left px-4 py-3 text-sm font-medium border-t transition-all duration-150 ${isDark ? 'border-gray-700 hover:bg-primary-900/20 text-gray-300' : 'border-gray-100 hover:bg-primary-50 text-gray-700'}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span>CSV</span>
-                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>→</span>
-                  </div>
-                </button>
-                <button
-                  onClick={exportToPDF}
-                  className={`w-full text-left px-4 py-3 text-sm font-medium border-t transition-all duration-150 ${isDark ? 'border-gray-700 hover:bg-primary-900/20 text-gray-300' : 'border-gray-100 hover:bg-primary-50 text-gray-700'}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span>PDF</span>
-                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>→</span>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={exportToExcel}
+            className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
+              isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}>
+            <HiDownload className="h-4 w-4" /> Export Excel
+          </button>
         </div>
       </div>
 

@@ -137,6 +137,7 @@ const FormateurExamensPage: React.FC = () => {
   const [planningFilterType, setPlanningFilterType] = useState('');
   const [planningFilterGroup, setPlanningFilterGroup] = useState('');
   const [planningFilterModule, setPlanningFilterModule] = useState('');
+  const [planningSearch, setPlanningSearch] = useState('');
   const [planningFormOpen, setPlanningFormOpen] = useState(false);
   const [planningDeleteOpen, setPlanningDeleteOpen] = useState(false);
   const [planningEditing, setPlanningEditing] = useState<any>(null);
@@ -369,6 +370,36 @@ const FormateurExamensPage: React.FC = () => {
     }
     if (!formateur) return;
     setPlanningSaving(true);
+
+    // Duplicate check: fetch all exams for this group and validate
+    try {
+      const checkRes = await axiosInstance.get('/examens', {
+        params: { group_id: Number(planningForm.group_id), per_page: 200 },
+      });
+      const existing: any[] = checkRes.data.data || [];
+      const editingId = planningEditing?.id;
+      for (const ex of existing) {
+        if (ex.id === editingId) continue;
+        if ((ex.date_examen || '').slice(0, 10) !== planningForm.date_examen) continue;
+        const exStart = (ex.heure_debut || '').slice(0, 5);
+        const exEnd   = (ex.heure_fin   || '').slice(0, 5);
+        const overlaps = planningForm.heure_debut < exEnd && exStart < planningForm.heure_fin;
+        if (!overlaps) continue;
+        if (ex.type === planningForm.type) {
+          toast.error('Ce groupe a déjà un examen de ce type planifié à cette date et heure');
+          setPlanningSaving(false);
+          return;
+        }
+        if (planningForm.salle_id && ex.salle_id && ex.salle_id === Number(planningForm.salle_id)) {
+          toast.error('Cette salle est déjà occupée par ce groupe à cette date et heure');
+          setPlanningSaving(false);
+          return;
+        }
+      }
+    } catch {
+      // non-fatal — proceed if check fails
+    }
+
     try {
       const payload: any = {
         group_id:     Number(planningForm.group_id),
@@ -657,8 +688,29 @@ const FormateurExamensPage: React.FC = () => {
           <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
             <h2 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Mes examens planifiés</h2>
             <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {examsLoading ? '...' : `${examsList.length} examen${examsList.length > 1 ? 's' : ''}`}
+              {examsLoading ? '...' : (() => { const q = planningSearch.toLowerCase(); const n = q ? examsList.filter(e => (e.module?.nom || '').toLowerCase().includes(q) || (e.group?.nom || '').toLowerCase().includes(q)).length : examsList.length; return `${n} examen${n > 1 ? 's' : ''}`; })()}
             </span>
+          </div>
+
+          {/* Search bar */}
+          <div className={`flex items-center gap-2 px-6 py-3 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="relative flex-1 max-w-sm">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={planningSearch}
+                onChange={e => setPlanningSearch(e.target.value)}
+                placeholder="Rechercher par module ou groupe..."
+                className={`w-full pl-9 pr-4 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 ${isDark ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-500' : 'border-gray-200 bg-white text-gray-700 placeholder-gray-400'}`}
+              />
+              {planningSearch && (
+                <button onClick={() => setPlanningSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className={`flex items-center gap-3 px-6 py-3 border-b flex-wrap ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -686,9 +738,9 @@ const FormateurExamensPage: React.FC = () => {
               <option value="">Tous mes modules</option>
               {planningFilterModuleOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
-            {(planningFilterType || planningFilterGroup || planningFilterModule) && (
+            {(planningFilterType || planningFilterGroup || planningFilterModule || planningSearch) && (
               <button
-                onClick={() => { setPlanningFilterType(''); setPlanningFilterGroup(''); setPlanningFilterModule(''); }}
+                onClick={() => { setPlanningFilterType(''); setPlanningFilterGroup(''); setPlanningFilterModule(''); setPlanningSearch(''); }}
                 className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600"
               >
                 Effacer filtres
@@ -711,9 +763,15 @@ const FormateurExamensPage: React.FC = () => {
               <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-50'}`}>
                 {examsLoading ? (
                   <tr><td colSpan={6} className={`px-4 py-12 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Chargement...</td></tr>
-                ) : examsList.length === 0 ? (
-                  <tr><td colSpan={6} className={`px-4 py-12 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Aucun examen planifié</td></tr>
-                ) : examsList.map((e: any) => {
+                ) : (() => {
+                  const q = planningSearch.toLowerCase();
+                  const visibleExams = q
+                    ? examsList.filter(e => (e.module?.nom || '').toLowerCase().includes(q) || (e.group?.nom || '').toLowerCase().includes(q))
+                    : examsList;
+                  if (visibleExams.length === 0) return (
+                    <tr><td colSpan={6} className={`px-4 py-12 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{examsList.length === 0 ? 'Aucun examen planifié' : 'Aucun résultat pour cette recherche'}</td></tr>
+                  );
+                  return visibleExams.map((e: any) => {
                   const t = typeBadge(e.type, e.numero);
                   return (
                     <tr key={e.id} className={`transition-colors ${isDark ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50/70'}`}>

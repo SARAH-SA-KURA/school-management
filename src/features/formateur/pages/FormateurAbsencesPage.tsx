@@ -19,10 +19,10 @@ interface AbsenceRow {
 }
 
 const TIME_SLOTS = [
-  { label: '08:30 - 10:50', start: '08:30', end: '10:50' },
-  { label: '11:10 - 13:30', start: '11:10', end: '13:30' },
-  { label: '13:30 - 15:50', start: '13:30', end: '15:50' },
-  { label: '16:10 - 18:30', start: '16:10', end: '18:30' },
+  { label: '08:30 - 11:00', start: '08:30', end: '11:00' },
+  { label: '11:00 - 13:30', start: '11:00', end: '13:30' },
+  { label: '13:30 - 16:00', start: '13:30', end: '16:00' },
+  { label: '16:00 - 18:30', start: '16:00', end: '18:30' },
 ];
 
 const FormateurAbsencesPage: React.FC = () => {
