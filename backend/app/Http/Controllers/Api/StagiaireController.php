@@ -435,25 +435,30 @@ class StagiaireController extends Controller
             ->orderBy('date_absence', 'desc')
             ->get();
 
-        // Calculate stats from actual time durations
+        // Three distinct buckets — the OFPPT engagement ladder only tracks
+        // `non_justifiee` hours, so lumping `en_attente` into "unjustified"
+        // would push the bar past the 15h/20h/30h thresholds on absences
+        // that still have a pending document review.
         $totalHours = 0;
         $justifiedHours = 0;
-        $unjustifiedHours = 0;
+        $unjustifiedHours = 0;   // non_justifiee ONLY — drives the OFPPT ladder
+        $enAttenteHours = 0;
         $justifiedCount = 0;
         $unjustifiedCount = 0;
+        $enAttenteCount = 0;
 
-        $absences = $absenceRecords->map(function ($a) use (&$totalHours, &$justifiedHours, &$unjustifiedHours, &$justifiedCount, &$unjustifiedCount) {
+        $absences = $absenceRecords->map(function ($a) use (&$totalHours, &$justifiedHours, &$unjustifiedHours, &$enAttenteHours, &$justifiedCount, &$unjustifiedCount, &$enAttenteCount) {
             $start = \Carbon\Carbon::createFromTimeString($a->heure_debut);
             $end   = \Carbon\Carbon::createFromTimeString($a->heure_fin);
             $hours = abs($end->diffInMinutes($start)) / 60;
 
             $totalHours += $hours;
             if ($a->status === 'justifiee') {
-                $justifiedHours += $hours;
-                $justifiedCount++;
+                $justifiedHours += $hours; $justifiedCount++;
+            } elseif ($a->status === 'en_attente') {
+                $enAttenteHours += $hours; $enAttenteCount++;
             } else {
-                $unjustifiedHours += $hours;
-                $unjustifiedCount++;
+                $unjustifiedHours += $hours; $unjustifiedCount++;
             }
 
             // Try to find the formateur for this module in the group's schedule
@@ -484,6 +489,8 @@ class StagiaireController extends Controller
                 'justified_count'       => $justifiedCount,
                 'unjustified_hours'     => round($unjustifiedHours, 2),
                 'unjustified_count'     => $unjustifiedCount,
+                'en_attente_hours'      => round($enAttenteHours, 2),
+                'en_attente_count'      => $enAttenteCount,
                 // OFPPT ladder — thresholds apply to NON-JUSTIFIED hours.
                 'max_allowed_hours'     => 32,   // hard cap, further NJ absences are rejected at store-time
                 'warning_threshold'     => 15,   // 1er engagement

@@ -157,6 +157,7 @@ const FormateurAbsencesPage: React.FC = () => {
     let saved = 0;
     let deleted = 0;
     let failed = 0;
+    const errorMessages: string[] = [];
 
     // Create new absence records
     for (const row of toCreate) {
@@ -175,8 +176,11 @@ const FormateurAbsencesPage: React.FC = () => {
             : r
         ));
         saved++;
-      } catch {
+      } catch (err: any) {
         failed++;
+        const msg = err?.response?.data?.message
+                 || Object.values(err?.response?.data?.errors || {}).flat()[0];
+        if (msg && !errorMessages.includes(msg)) errorMessages.push(msg);
       }
     }
 
@@ -188,15 +192,18 @@ const FormateurAbsencesPage: React.FC = () => {
           r.stagiaire_id === row.stagiaire_id ? { ...r, absence_id: null } : r
         ));
         deleted++;
-      } catch {
+      } catch (err: any) {
         failed++;
+        const msg = err?.response?.data?.message;
+        if (msg && !errorMessages.includes(msg)) errorMessages.push(msg);
       }
     }
 
     setSaving(false);
 
     if (failed > 0) {
-      toast.error(`${failed} opération(s) ont échoué`);
+      const detail = errorMessages.length > 0 ? ` — ${errorMessages[0]}` : '';
+      toast.error(`${failed} opération(s) ont échoué${detail}`);
     } else if (saved > 0 || deleted > 0) {
       const parts = [];
       if (saved > 0)   parts.push(`${saved} absence(s) enregistrée(s)`);

@@ -100,7 +100,10 @@ class AbsenceController extends Controller
     {
         $validated = $request->validate([
             'stagiaire_id' => 'required|exists:stagiaires,id',
-            'module_id' => 'required|exists:modules,id',
+            // Nullable: column was made nullable in migration; Formateur's
+            // attendance form doesn't know the module up-front, we infer it
+            // from emploi_du_temps below.
+            'module_id' => 'nullable|exists:modules,id',
             'date_absence' => 'required|date',
             'heure_debut' => 'required|date_format:H:i',
             'heure_fin' => 'required|date_format:H:i',
@@ -110,6 +113,27 @@ class AbsenceController extends Controller
 
         if ($validated['heure_debut'] >= $validated['heure_fin']) {
             return $this->error("L'heure de fin doit être après l'heure de début.", 422);
+        }
+
+        // Infer module_id from the stagiaire's emploi_du_temps when the caller
+        // didn't provide one — Formateur attendance form doesn't carry it.
+        // We match (group, weekday, overlapping time range). If nothing matches,
+        // module_id stays null (general absence).
+        if (empty($validated['module_id'])) {
+            $stag = \App\Models\Stagiaire::find($validated['stagiaire_id']);
+            if ($stag) {
+                $joursFr = [1=>'lundi', 2=>'mardi', 3=>'mercredi', 4=>'jeudi', 5=>'vendredi', 6=>'samedi'];
+                try { $jour = $joursFr[\Carbon\Carbon::parse($validated['date_absence'])->dayOfWeekIso] ?? null; }
+                catch (\Throwable $e) { $jour = null; }
+                if ($jour) {
+                    $session = \App\Models\EmploiDuTemps::where('group_id', $stag->group_id)
+                        ->where('jour', $jour)
+                        ->where('heure_debut', '<', $validated['heure_fin'])
+                        ->where('heure_fin',   '>', $validated['heure_debut'])
+                        ->first();
+                    if ($session) $validated['module_id'] = $session->module_id;
+                }
+            }
         }
 
         // Prevent overlapping absences for the same stagiaire on the same day —
