@@ -137,6 +137,8 @@ const FormateurExamensPage: React.FC = () => {
   const [planningFilterType, setPlanningFilterType] = useState('');
   const [planningFilterGroup, setPlanningFilterGroup] = useState('');
   const [planningFilterModule, setPlanningFilterModule] = useState('');
+  // Default to "À venir" — the planning tab is meant to show what's coming up.
+  const [planningWhen, setPlanningWhen] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [planningSearch, setPlanningSearch] = useState('');
   const [planningFormOpen, setPlanningFormOpen] = useState(false);
   const [planningDeleteOpen, setPlanningDeleteOpen] = useState(false);
@@ -324,13 +326,14 @@ const FormateurExamensPage: React.FC = () => {
       if (planningFilterType) params.type = planningFilterType;
       if (planningFilterGroup) params.group_id = planningFilterGroup;
       if (planningFilterModule) params.module_id = planningFilterModule;
+      if (planningWhen !== 'all') params.when = planningWhen;
       const res = await axiosInstance.get('/examens', { params });
       setExamsList(res.data.data || []);
     } catch {
       toast.error('Erreur de chargement des examens');
     }
     setExamsLoading(false);
-  }, [formateur, activeTab, planningFilterType, planningFilterGroup, planningFilterModule]);
+  }, [formateur, activeTab, planningFilterType, planningFilterGroup, planningFilterModule, planningWhen]);
 
   useEffect(() => { fetchExamsList(); }, [fetchExamsList]);
 
@@ -714,6 +717,29 @@ const FormateurExamensPage: React.FC = () => {
           </div>
 
           <div className={`flex items-center gap-3 px-6 py-3 border-b flex-wrap ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+            {/* Time-scope toggle — keeps the table focused on what still matters */}
+            <div className={`inline-flex rounded-lg border overflow-hidden ${isDark ? 'border-gray-600' : 'border-gray-200'}`}>
+              {([
+                { v: 'upcoming', label: 'À venir' },
+                { v: 'past',     label: 'Passés' },
+                { v: 'all',      label: 'Tous' },
+              ] as const).map(opt => {
+                const active = planningWhen === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    onClick={() => setPlanningWhen(opt.v)}
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'bg-primary-600 text-white'
+                        : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
             <select
               value={planningFilterType}
               onChange={e => setPlanningFilterType(e.target.value)}
@@ -738,9 +764,9 @@ const FormateurExamensPage: React.FC = () => {
               <option value="">Tous mes modules</option>
               {planningFilterModuleOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
-            {(planningFilterType || planningFilterGroup || planningFilterModule || planningSearch) && (
+            {(planningFilterType || planningFilterGroup || planningFilterModule || planningSearch || planningWhen !== 'upcoming') && (
               <button
-                onClick={() => { setPlanningFilterType(''); setPlanningFilterGroup(''); setPlanningFilterModule(''); setPlanningSearch(''); }}
+                onClick={() => { setPlanningFilterType(''); setPlanningFilterGroup(''); setPlanningFilterModule(''); setPlanningSearch(''); setPlanningWhen('upcoming'); }}
                 className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600"
               >
                 Effacer filtres

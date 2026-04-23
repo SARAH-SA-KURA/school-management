@@ -22,6 +22,9 @@ class ExamenController extends Controller
         if ($request->has('module_id')) {
             $query->where('module_id', $request->module_id);
         }
+        if ($request->has('formateur_id')) {
+            $query->where('formateur_id', $request->formateur_id);
+        }
         if ($request->has('type')) {
             $query->where('type', $request->type);
         }
@@ -31,8 +34,19 @@ class ExamenController extends Controller
         if ($request->has('date_to')) {
             $query->where('date_examen', '<=', $request->date_to);
         }
+        // Time filter — 'upcoming' keeps the Formateur planning table focused
+        // on what still matters; 'past' is the mirror for history.
+        if ($request->input('when') === 'upcoming') {
+            $query->whereDate('date_examen', '>=', now()->toDateString());
+        } elseif ($request->input('when') === 'past') {
+            $query->whereDate('date_examen', '<', now()->toDateString());
+        }
 
-        $query->orderBy('date_examen', 'asc');
+        // Upcoming-first makes more sense than chronological-ascending when the
+        // list runs long (EFMs from last year shouldn't bury this week's CC).
+        $query->orderByRaw('date_examen >= ? DESC', [now()->toDateString()])
+              ->orderBy('date_examen', 'asc')
+              ->orderBy('heure_debut', 'asc');
 
         return $this->paginated($query, $request);
     }

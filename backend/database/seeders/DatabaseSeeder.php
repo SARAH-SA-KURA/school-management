@@ -582,6 +582,33 @@ class DatabaseSeeder extends Seeder
                     'heure_debut'    => '09:00',
                     'heure_fin'      => '11:00',
                 ]));
+
+                // Upcoming exams — EFF (épreuve finale) + Rattrapage anchored
+                // 4/6 weeks from "now" so the Formateur planning screen always
+                // has a live "À venir" list to demo against, independent of
+                // when the seeder was last run.
+                $allExamens->push(Examen::create([
+                    'module_id'      => $module->id,
+                    'group_id'       => $group->id,
+                    'salle_id'       => $salles->where('is_active', true)->random()->id,
+                    'formateur_id'   => $formateur->id,
+                    'surveillant_id' => $survUser->id,
+                    'type'           => 'eff',
+                    'date_examen'    => now()->addWeeks(4)->toDateString(),
+                    'heure_debut'    => '09:00',
+                    'heure_fin'      => '11:00',
+                ]));
+                $allExamens->push(Examen::create([
+                    'module_id'      => $module->id,
+                    'group_id'       => $group->id,
+                    'salle_id'       => $salles->where('is_active', true)->random()->id,
+                    'formateur_id'   => $formateur->id,
+                    'surveillant_id' => $survUser->id,
+                    'type'           => 'rattrapage',
+                    'date_examen'    => now()->addWeeks(6)->toDateString(),
+                    'heure_debut'    => '14:00',
+                    'heure_fin'      => '15:30',
+                ]));
             }
         }
 
