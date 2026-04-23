@@ -241,6 +241,43 @@ class AuthController extends Controller
             $formateur->groups->pluck('id')
         )->count();
 
+        // Per-module groups — which of MY groups do I teach THIS module to?
+        // Priority 1: groups where sessions already exist in emploi_du_temps.
+        // Priority 2 (fallback): groups from the formateur_group pivot that
+        // match the module's (filière, year) — covers the realistic case where
+        // the Directeur has assigned the formateur to a group but the emploi
+        // hasn't scheduled that module yet. Without this, the Modules tab
+        // showed "Non assigné" for modules whose sessions were displaced by
+        // the 30h cap, which the user rightly flagged as wrong.
+        $moduleIds = $formateur->modules->pluck('id');
+        if ($moduleIds->isNotEmpty()) {
+            $pairs = \App\Models\EmploiDuTemps::where('formateur_id', $formateur->id)
+                ->whereIn('module_id', $moduleIds)
+                ->get(['module_id', 'group_id'])
+                ->groupBy('module_id');
+
+            $scheduledGroupIds = $pairs->flatten(1)->pluck('group_id')->unique();
+            $groupsById = \App\Models\Group::whereIn('id', $scheduledGroupIds)
+                ->get(['id', 'nom', 'annee', 'filiere_id'])
+                ->keyBy('id');
+
+            foreach ($formateur->modules as $m) {
+                $gIds = ($pairs[$m->id] ?? collect())->pluck('group_id')->unique();
+
+                if ($gIds->isNotEmpty()) {
+                    $groups = $gIds->map(fn ($gid) => $groupsById[$gid] ?? null)->filter();
+                } else {
+                    // Fallback: infer from formateur_group pivot + module's (filière, year).
+                    // Module.semestre here is our year convention (1 → année 1, 2 → année 2).
+                    $groups = $formateur->groups
+                        ->where('filiere_id', $m->filiere_id)
+                        ->where('annee', $m->semestre);
+                }
+
+                $m->setAttribute('groups', $groups->values());
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => $formateur,
