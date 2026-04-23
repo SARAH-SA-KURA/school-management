@@ -6,6 +6,7 @@ use App\Models\{User, Filiere, Group, Module, Salle, Formateur, Stagiaire, Emplo
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class DatabaseSeeder extends Seeder
 {
@@ -128,7 +129,17 @@ class DatabaseSeeder extends Seeder
         } elseif ($driver === 'sqlite') {
             DB::statement('PRAGMA foreign_keys = OFF');
         }
-        foreach (['notes','absences','emploi_du_temps','stagiaires','formateur_module','formateurs','groups','salles','modules','filieres','users'] as $t) {
+        // Order matters when FKs are on (not our case — we disable above) but listing
+        // children-before-parents still keeps intent clear. Added: notifications,
+        // note_validations, formateur_group, examens (the latter has notes FKed to it
+        // and was previously relying on cascade — explicit delete is cleaner).
+        foreach ([
+            'note_validations','notes','examens','absences','emploi_du_temps',
+            'notifications','activity_logs','personal_access_tokens',
+            'stagiaires','formateur_group','formateur_module',
+            'formateurs','groups','salles','modules','filieres','users'
+        ] as $t) {
+            if (!Schema::hasTable($t)) continue;
             if ($driver === 'sqlite') {
                 DB::table($t)->delete();
             } else {
@@ -328,27 +339,54 @@ class DatabaseSeeder extends Seeder
             ]));
         }
 
-        // Assign modules to formateurs (round-robin)
-        $modulePool = $allModules->shuffle()->values();
-        $fIdx = 0;
-        foreach ($modulePool as $module) {
-            $formateur = $allFormateurs[$fIdx % $allFormateurs->count()];
-            $formateur->modules()->syncWithoutDetaching([$module->id]);
-            $fIdx++;
+        // Assign modules to formateurs BY SPECIALISATION — no round-robin.
+        // Each formateur gets only the modules that match what he actually teaches,
+        // so the emploi du temps & notes tabs reflect reality (Benali — Dev Web —
+        // will never show up scheduled for Admin Système).
+        $moduleAssignments = [
+            'benali@macompus.ma'     => ['M101'],                          // Dév Web
+            'tazi@macompus.ma'       => ['M103'],                          // Java / POO
+            'idrissi@macompus.ma'    => ['M201', 'M401'],                  // Réseaux
+            'elamrani@macompus.ma'   => ['M102'],                          // Base de données
+            'chraibi@macompus.ma'    => ['M104', 'M105'],                  // Frontend / Mobile
+            'mansouri@macompus.ma'   => ['M202', 'M203'],                  // Admin Sys / Virtualisation
+            'bennani@macompus.ma'    => ['M204'],                          // Sécurité informatique
+            'alaoui@macompus.ma'     => ['M205'],                          // Cloud & DevOps
+            'filali@macompus.ma'     => ['M301', 'M303'],                  // Comptabilité / Gestion financière
+            'kettani@macompus.ma'    => ['M302', 'M304', 'M305'],          // Marketing / RH / Droit
+            'hajji@macompus.ma'      => ['M402', 'M403', 'M404', 'M405'],  // Câblage + Switching/Tel/Supervision
+            'berrada@macompus.ma'    => ['M501', 'M503'],                  // ML + Python Data Science
+            'cherkaoui@macompus.ma'  => ['M502', 'M504', 'M505'],          // Deep Learning / NLP / Vision
+            'boutaleb@macompus.ma'   => ['M601', 'M603', 'M604'],          // RdM / Béton / Dessin
+            'sefrioui@macompus.ma'   => ['M602', 'M605'],                  // Topographie / Géotechnique
+        ];
+        $modulesByCode = $allModules->keyBy('code');
+        foreach ($allFormateurs as $formateur) {
+            $codes = $moduleAssignments[$formateur->user->email] ?? [];
+            $ids = [];
+            foreach ($codes as $c) {
+                if ($modulesByCode->has($c)) $ids[] = $modulesByCode[$c]->id;
+            }
+            if (!empty($ids)) $formateur->modules()->syncWithoutDetaching($ids);
         }
 
-        // Assign groups to each formateur — all groups whose filière the
-        // formateur teaches at least one module in. Keeps the formateur_group
-        // pivot consistent with the formateur_module pivot so logging in as a
-        // seeded formateur surfaces his actual students end-to-end.
+        // Assign groups to each formateur — only groups whose (filière, year)
+        // pair matches a module he actually teaches (semestre=1 → year 1 groups,
+        // semestre=2 → year 2 groups). This mirrors what ends up in emploi_du_temps
+        // so logging in as a seeded formateur surfaces exactly his own students.
         foreach ($allFormateurs as $formateur) {
-            $taughtFiliereIds = $formateur->modules()->pluck('modules.filiere_id')->unique()->values();
-            if ($taughtFiliereIds->isEmpty()) continue;
+            $taughtPairs = $formateur->modules()
+                ->get(['modules.filiere_id', 'modules.semestre'])
+                ->map(fn ($m) => $m->filiere_id . ':' . $m->semestre)
+                ->unique()
+                ->values();
+            if ($taughtPairs->isEmpty()) continue;
 
-            $groupIds = Group::whereIn('filiere_id', $taughtFiliereIds)
+            $groupIds = Group::get(['id', 'filiere_id', 'annee'])
+                ->filter(fn ($g) => $taughtPairs->contains($g->filiere_id . ':' . $g->annee))
                 ->pluck('id')
                 ->all();
-            $formateur->groups()->syncWithoutDetaching($groupIds);
+            if (!empty($groupIds)) $formateur->groups()->syncWithoutDetaching($groupIds);
         }
 
         // ──────────────── Stagiaires (20-30 per group, Moroccan names) ────────────────
@@ -421,16 +459,26 @@ class DatabaseSeeder extends Seeder
         $SLOT_MINUTES = 150;          // 2h30
 
         foreach ($allGroups as $group) {
-            $filiereModules = $allModules->where('filiere_id', $group->filiere_id)->values();
+            // Only modules that belong to this group's year show up.
+            // Convention: semestre=1 → year 1 module, semestre=2 → year 2 module.
+            // This is what keeps a Y1 module ("Administration système") from leaking
+            // into a Y2 group's schedule.
+            $filiereModules = $allModules
+                ->where('filiere_id', $group->filiere_id)
+                ->where('semestre', $group->annee)
+                ->values();
             if ($filiereModules->isEmpty()) continue;
 
             $moduleIdx = 0;
             foreach ($jours as $jour) {
                 // Saturday: morning slots only (08:30-11:00 + 11:00-13:30)
+                // Weekdays: 2 slots/day → ~25h/week per group, matching the OFPPT norm.
+                // Any more and a group with just 2 modules in its year would see the
+                // same module scheduled 8+ times a week (unrealistic).
                 $daySchedulable = $jour === 'samedi' ? [0, 1] : $schedulableIndexes;
                 $slotsForDay = $jour === 'samedi'
-                    ? fake()->numberBetween(1, 2)
-                    : fake()->numberBetween(2, 3);
+                    ? fake()->numberBetween(0, 1)
+                    : 2;
 
                 $slotIndexes = collect($daySchedulable)->shuffle()->take($slotsForDay);
 
@@ -491,7 +539,14 @@ class DatabaseSeeder extends Seeder
         $ccTimes   = [['09:00','10:30'], ['09:00','10:30'], ['14:00','15:30']];
 
         foreach ($allGroups as $group) {
-            $filiereModules = $allModules->where('filiere_id', $group->filiere_id)->values();
+            // Same year filter as the emploi: Y1 groups only see Y1 (semestre=1) modules
+            // for their exams, Y2 groups only see Y2 (semestre=2) modules. Keeps the
+            // catalog honest (no 2nd-year student graded on "Administration système"
+            // which is a 1st-year module).
+            $filiereModules = $allModules
+                ->where('filiere_id', $group->filiere_id)
+                ->where('semestre', $group->annee)
+                ->values();
             // Exams are scheduled for EVERY module in the filière (not a random subset).
             // This matches reality — each module gets its own CCs + EFM — and ensures the
             // Notes tab has meaningful coverage for any group/module the user picks.
@@ -609,7 +664,10 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($stagiaires as $stag) {
-            $filiereModules = $allModules->where('filiere_id', $stag->group->filiere_id)->values();
+            $filiereModules = $allModules
+                ->where('filiere_id', $stag->group->filiere_id)
+                ->where('semestre', $stag->group->annee)
+                ->values();
             if ($filiereModules->isEmpty()) continue;
 
             // Past absences (0-5 per student)
@@ -653,7 +711,10 @@ class DatabaseSeeder extends Seeder
         // Add 5 absences for today (for dashboard display)
         $todayStagiaires = $stagiaires->random(min(5, $stagiaires->count()));
         foreach ($todayStagiaires as $stag) {
-            $filiereModules = $allModules->where('filiere_id', $stag->group->filiere_id)->values();
+            $filiereModules = $allModules
+                ->where('filiere_id', $stag->group->filiere_id)
+                ->where('semestre', $stag->group->annee)
+                ->values();
             if ($filiereModules->isEmpty()) continue;
 
             Absence::create([

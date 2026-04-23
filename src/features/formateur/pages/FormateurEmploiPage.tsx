@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { emploiDuTempsApi } from '../../../api/crudApi';
-import axiosInstance from '../../../api/axiosInstance';
+import axiosInstance from '../../../utils/axios';
 
 interface ScheduleEntry {
   id: number;
