@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../../contexts/ThemeContext';
 import axiosInstance from '../../../utils/axios';
 import toast from 'react-hot-toast';
 import {
-  HiDownload, HiUpload, HiChevronDown,
   HiPlus, HiPencil, HiTrash, HiDotsHorizontal,
   HiCalendar, HiClock, HiLocationMarker,
 } from 'react-icons/hi';
@@ -122,9 +121,6 @@ const FormateurExamensPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 7;
 
-  const exportRef  = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [exportOpen, setExportOpen] = useState(false);
 
   // ── Tab + Planning state ──────────────────────────────────────────────────
   // Default to the Planning tab: the Formateur's primary job here is to
@@ -188,13 +184,6 @@ const FormateurExamensPage: React.FC = () => {
       }
     };
     init();
-
-    const outsideClick = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node))
-        setExportOpen(false);
-    };
-    document.addEventListener('mousedown', outsideClick);
-    return () => document.removeEventListener('mousedown', outsideClick);
   }, []);
 
   // ── Load stagiaires when groupe changes ───────────────────────────────────
@@ -294,7 +283,12 @@ const FormateurExamensPage: React.FC = () => {
         })
       );
 
-      setIsSaved(true);
+      // isSaved reflects "grades are stored in DB", not "exam rows exist".
+      // Seeded examens (CC/EFM/EFF/Rattrapage metadata) always exist per
+      // (group, module), so keying off them would lock the form even with
+      // zero grades entered. Key off the notes payload instead.
+      const hasAnyNoteEntered = allNotes.some(({ notes }) => notes.length > 0);
+      setIsSaved(hasAnyNoteEntered);
     } catch {
       // No data yet — form stays empty
     } finally {
@@ -374,34 +368,10 @@ const FormateurExamensPage: React.FC = () => {
     if (!formateur) return;
     setPlanningSaving(true);
 
-    // Duplicate check: fetch all exams for this group and validate
-    try {
-      const checkRes = await axiosInstance.get('/examens', {
-        params: { group_id: Number(planningForm.group_id), per_page: 200 },
-      });
-      const existing: any[] = checkRes.data.data || [];
-      const editingId = planningEditing?.id;
-      for (const ex of existing) {
-        if (ex.id === editingId) continue;
-        if ((ex.date_examen || '').slice(0, 10) !== planningForm.date_examen) continue;
-        const exStart = (ex.heure_debut || '').slice(0, 5);
-        const exEnd   = (ex.heure_fin   || '').slice(0, 5);
-        const overlaps = planningForm.heure_debut < exEnd && exStart < planningForm.heure_fin;
-        if (!overlaps) continue;
-        if (ex.type === planningForm.type) {
-          toast.error('Ce groupe a déjà un examen de ce type planifié à cette date et heure');
-          setPlanningSaving(false);
-          return;
-        }
-        if (planningForm.salle_id && ex.salle_id && ex.salle_id === Number(planningForm.salle_id)) {
-          toast.error('Cette salle est déjà occupée par ce groupe à cette date et heure');
-          setPlanningSaving(false);
-          return;
-        }
-      }
-    } catch {
-      // non-fatal — proceed if check fails
-    }
+    // Conflict detection is authoritative on the backend now
+    // (ExamenController::detectConflict covers group/formateur/salle exam
+    // overlaps + emploi-du-temps clashes). Error messages come back in the
+    // catch block below.
 
     try {
       const payload: any = {
@@ -566,23 +536,6 @@ const FormateurExamensPage: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const exportToCSV = () => {
-    const headers = ['Stagiaire', ...columns.map(colLabel), 'Moyenne'];
-    const rows = gradeRows.map(r => [
-      r.name,
-      ...columns.map(c => r.abs[c] ? 'ABS' : r.notes[c] ?? ''),
-      calcMoyenne(r),
-    ]);
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `notes_module${selectedModule}.csv`;
-    link.click();
-    setExportOpen(false);
-    toast.success('CSV téléchargé');
-  };
-
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages   = Math.max(1, Math.ceil(gradeRows.length / rowsPerPage));
   const pagedRows    = gradeRows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -624,39 +577,13 @@ const FormateurExamensPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {activeTab === 'planning' ? (
+          {activeTab === 'planning' && (
             <button
               onClick={openCreatePlanning}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors"
             >
               <HiPlus className="h-4 w-4" /> Planifier examen
             </button>
-          ) : (
-            <>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-              >
-                <HiUpload className="h-4 w-4" /> Import
-              </button>
-              <input ref={fileInputRef} type="file" accept=".csv,.xlsx" className="hidden" />
-
-              <div className="relative" ref={exportRef}>
-                <button
-                  onClick={() => setExportOpen(!exportOpen)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                >
-                  <HiDownload className="h-4 w-4" /> Export
-                </button>
-                {exportOpen && (
-                  <div className={`absolute right-0 mt-2 w-44 rounded-lg shadow-lg border z-20 overflow-hidden ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                    <button onClick={exportToCSV} className={`w-full text-left px-4 py-2.5 text-sm ${isDark ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}>
-                      CSV
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
           )}
         </div>
       </div>
@@ -852,13 +779,8 @@ const FormateurExamensPage: React.FC = () => {
       <div className={`rounded-xl border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
 
         {/* ── Title row ── */}
-        <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className={`px-6 py-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
           <h2 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Examens & notes</h2>
-          <div className="flex items-center gap-2">
-            <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium ${isDark ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-              Sort By A-Z <HiChevronDown className="h-4 w-4" />
-            </button>
-          </div>
         </div>
 
         {/* ── Filter pills ── */}
@@ -1110,6 +1032,9 @@ const FormateurExamensPage: React.FC = () => {
       </div>
 
       {/* ── Bottom action bar ── */}
+      {/* Modifier shows only when notes are already saved in the DB — an empty
+          form lets the Formateur type directly and hit Enregistrer. Once saved
+          the inputs lock (inputDisabled) and Modifier re-opens them. */}
       <div className="flex justify-end gap-3 mt-6">
         {isSaved && !moduleLocked && (
           <button
@@ -1117,14 +1042,6 @@ const FormateurExamensPage: React.FC = () => {
             className={`px-6 py-3 rounded-xl text-sm font-medium transition-colors ${isDark ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
           >
             Modifier
-          </button>
-        )}
-        {isSaved && !moduleLocked && (
-          <button
-            onClick={handleReset}
-            className={`px-6 py-3 rounded-xl text-sm font-medium transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-          >
-            Nouvelle saisie
           </button>
         )}
         {!moduleLocked && (

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Examen;
+use App\Models\EmploiDuTemps;
+use App\Models\Group;
 use App\Models\Salle;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -11,6 +13,84 @@ use Illuminate\Http\Request;
 class ExamenController extends Controller
 {
     use ApiResponse;
+
+    /**
+     * Map French day names (DB stores lundi…samedi) to PHP's Carbon dayOfWeek
+     * (sunday = 0 … saturday = 6). We pass the exam date through Carbon to get
+     * the weekday, then compare against emploi_du_temps entries for that day.
+     */
+    private const JOURS_FR = [
+        1 => 'lundi', 2 => 'mardi', 3 => 'mercredi',
+        4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi',
+    ];
+
+    /**
+     * Check for exam scheduling conflicts. Returns an error string (French)
+     * when a clash is found, or null if the slot is free.
+     *
+     *   Clash sources, in priority order:
+     *   1) Another exam at the same day+time for this group
+     *   2) Another exam at the same day+time for this formateur
+     *   3) Another exam at the same day+time in this salle (if given)
+     *   4) A regular session in emploi_du_temps at the same day+time for this
+     *      group — students are supposed to be in class, not an exam
+     *
+     * $excludeId lets `update()` skip the current row when checking.
+     */
+    private function detectConflict(array $data, ?int $excludeId = null): ?string
+    {
+        $date      = $data['date_examen'];
+        $debut     = substr($data['heure_debut'], 0, 5);
+        $fin       = substr($data['heure_fin'], 0, 5);
+        $groupId   = $data['group_id'];
+        $formateurId = $data['formateur_id'];
+        $salleId   = $data['salle_id'] ?? null;
+
+        // Same day/time overlap on another Examen row.
+        $overlapping = Examen::whereDate('date_examen', $date)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->where('heure_debut', '<', $fin)
+            ->where('heure_fin',   '>', $debut);
+
+        $clash = (clone $overlapping)->where('group_id', $groupId)->first();
+        if ($clash) {
+            return "Ce groupe a déjà un examen programmé à ce créneau ({$clash->heure_debut} — {$clash->heure_fin}).";
+        }
+
+        $clash = (clone $overlapping)->where('formateur_id', $formateurId)->first();
+        if ($clash) {
+            return "Vous avez déjà un examen programmé à ce créneau ({$clash->heure_debut} — {$clash->heure_fin}).";
+        }
+
+        if ($salleId) {
+            $clash = (clone $overlapping)->where('salle_id', $salleId)->first();
+            if ($clash) {
+                return "Cette salle est déjà occupée par un autre examen à ce créneau.";
+            }
+        }
+
+        // Emploi du temps clash: is this group in class at that time?
+        try {
+            $dayIdx = \Carbon\Carbon::parse($date)->dayOfWeekIso; // 1..7 (Mon=1)
+        } catch (\Throwable $e) {
+            $dayIdx = 0;
+        }
+        $jour = self::JOURS_FR[$dayIdx] ?? null;
+        if ($jour) {
+            $session = EmploiDuTemps::where('group_id', $groupId)
+                ->where('jour', $jour)
+                ->where('heure_debut', '<', $fin)
+                ->where('heure_fin',   '>', $debut)
+                ->with('module')
+                ->first();
+            if ($session) {
+                $modNom = $session->module->nom ?? '—';
+                return "Le groupe a cours à ce créneau ({$session->heure_debut} — {$session->heure_fin} : {$modNom}). Choisissez un autre horaire.";
+            }
+        }
+
+        return null;
+    }
 
     public function index(Request $request)
     {
@@ -72,6 +152,10 @@ class ExamenController extends Controller
             }
         }
 
+        if ($clash = $this->detectConflict($validated)) {
+            return $this->error($clash, 422);
+        }
+
         $examen = Examen::create($validated);
         $examen->load(['module', 'group', 'salle', 'formateur.user']);
 
@@ -103,6 +187,21 @@ class ExamenController extends Controller
             if ($salle && ! $salle->is_active) {
                 return $this->error('Cette salle est marquée indisponible' . ($salle->motif_indisponibilite ? ' : ' . $salle->motif_indisponibilite : '.'), 422);
             }
+        }
+
+        // Merge incoming changes with the current row before checking —
+        // conflict detection runs against the final state, not the delta.
+        $final = array_merge([
+            'group_id'     => $examen->group_id,
+            'formateur_id' => $examen->formateur_id,
+            'salle_id'     => $examen->salle_id,
+            'date_examen'  => $examen->date_examen->format('Y-m-d'),
+            'heure_debut'  => $examen->heure_debut,
+            'heure_fin'    => $examen->heure_fin,
+        ], $validated);
+
+        if ($clash = $this->detectConflict($final, $examen->id)) {
+            return $this->error($clash, 422);
         }
 
         $examen->update($validated);
