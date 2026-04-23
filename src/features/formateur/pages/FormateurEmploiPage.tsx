@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { HiPrinter } from 'react-icons/hi';
+import toast from 'react-hot-toast';
 import { emploiDuTempsApi } from '../../../api/crudApi';
 import axiosInstance from '../../../utils/axios';
+
+const escapeHtml = (s: any): string =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 interface ScheduleEntry {
   id: number;
@@ -127,6 +134,133 @@ const FormateurEmploiPage: React.FC = () => {
 
   const getGroupColor = (groupe: string) => colorMap.get(groupe) || GROUP_COLORS[0];
 
+  // Print/export: same visual language as the admin emploi — opens a new
+  // window with an A4 landscape HTML grid, kicks off window.print() so the
+  // user gets the native print dialog (→ "Save as PDF" works too).
+  const handlePrint = () => {
+    if (filteredEntries.length === 0) {
+      toast.error('Aucune séance à imprimer');
+      return;
+    }
+    // Map the Tailwind classes used in `getGroupColor` to hex so the print
+    // window (no Tailwind build) still shows the group color rail.
+    const colorHex: Record<string, string> = {
+      'bg-blue-500':    '#3b82f6',
+      'bg-emerald-500': '#10b981',
+      'bg-pink-500':    '#ec4899',
+      'bg-teal-600':    '#0d9488',
+      'bg-amber-600':   '#d97706',
+      'bg-indigo-600':  '#4f46e5',
+      'bg-purple-500':  '#a855f7',
+      'bg-orange-500':  '#f97316',
+    };
+    const groupColor = (g: string) => colorHex[getGroupColor(g)] || '#6366f1';
+
+    const renderCell = (day: string, slotIdx: number): string => {
+      const isSaturdayAfternoon = day === 'Samedi' && slotIdx >= 2;
+      if (isSaturdayAfternoon) {
+        return `<td class="cell closed"><span class="closed-label">Fermé</span></td>`;
+      }
+      const cellEntries = getSlotEntries(day, slotIdx);
+      if (cellEntries.length === 0) return `<td class="cell"></td>`;
+      const cards = cellEntries.map(entry => {
+        const col = groupColor(entry.groupe);
+        const venue = entry.type === 'a_distance' ? 'à distance' : (entry.salle || 'Salle non assignée');
+        return `
+          <div class="card" style="border-left-color: ${col};">
+            <div class="m">${escapeHtml(entry.module || '—')}</div>
+            <div class="t">${escapeHtml(entry.heureDebut || '')} → ${escapeHtml(entry.heureFin || '')}</div>
+            <div class="g">${escapeHtml(entry.groupe)} · ${escapeHtml(venue)}</div>
+          </div>`;
+      }).join('');
+      return `<td class="cell">${cards}</td>`;
+    };
+
+    const gridRows = timeSlots.map((slot, slotIdx) => {
+      const dayCells = days.map(day => renderCell(day, slotIdx)).join('');
+      return `
+        <tr>
+          <td class="time-col">
+            <div class="t-start">${escapeHtml(slot.start)}</div>
+            <div class="t-end">${escapeHtml(slot.end)}</div>
+          </td>
+          ${dayCells}
+        </tr>`;
+    }).join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Emploi du temps</title>
+<style>
+  @page { size: A4 landscape; margin: 10mm; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 14px 18px; color: #111827; }
+  h1 { font-size: 16px; margin: 0 0 2px; font-weight: 700; }
+  .sub { color: #6b7280; font-size: 10px; margin-bottom: 10px; }
+  .sub b { color: #111827; }
+  table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+  table.grid thead th {
+    background: #f9fafb; border: 1px solid #e5e7eb; padding: 6px 4px;
+    font-weight: 700; color: #374151; text-align: center; font-size: 9.5px;
+  }
+  table.grid th.time-col, table.grid td.time-col { width: 56px; }
+  table.grid td.cell {
+    border: 1px solid #e5e7eb; padding: 3px; vertical-align: top;
+    height: 100px; background: #fff;
+  }
+  table.grid td.cell.closed { background: #f3f4f6; text-align: center; }
+  .closed-label { color: #9ca3af; font-style: italic; font-size: 9px; }
+  table.grid td.time-col {
+    background: #f9fafb; border: 1px solid #e5e7eb; padding: 4px;
+    text-align: center; vertical-align: top;
+  }
+  .t-start { font-weight: 700; color: #111827; font-size: 10px; }
+  .t-end { color: #9ca3af; font-size: 9px; margin-top: 1px; }
+  .card {
+    border-left: 3px solid #6366f1; padding: 3px 5px; margin-bottom: 3px;
+    border-radius: 2px; background: #fff;
+  }
+  .card .m { font-weight: 600; color: #111827; font-size: 9px; line-height: 1.2; }
+  .card .t { color: #4f46e5; font-size: 8.5px; font-weight: 600; margin-top: 1px; }
+  .card .g { color: #6b7280; font-size: 8px; margin-top: 1px; line-height: 1.2; }
+  .totals {
+    margin-top: 10px; padding: 8px 12px;
+    background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: #374151;
+  }
+  .totals .big { font-size: 14px; font-weight: 700; color: #111827; }
+  @media print {
+    body { padding: 0; }
+    tr, .card { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+  }
+</style></head><body>
+<h1>Emploi du temps — Formateur</h1>
+<div class="sub">Imprimé le ${escapeHtml(new Date().toLocaleString('fr-FR'))}</div>
+<table class="grid">
+  <thead>
+    <tr>
+      <th class="time-col">Horaire</th>
+      ${days.map(d => `<th>${escapeHtml(d)}</th>`).join('')}
+    </tr>
+  </thead>
+  <tbody>${gridRows}</tbody>
+</table>
+<div class="totals">
+  <span>${filteredEntries.length} séance(s)</span>
+  <span>Masse horaire : <span class="big">${escapeHtml(masseHoraire || '0h')}</span> / semaine</span>
+</div>
+<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=1200,height=800');
+    if (!w) {
+      toast.error('Autorisez les pop-ups pour imprimer');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <div>
       <div className="flex items-start justify-between mb-6">
@@ -140,15 +274,25 @@ const FormateurEmploiPage: React.FC = () => {
             <span>Emploi du temps</span>
           </p>
         </div>
-        {masseHoraire && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth={2} />
-              <path strokeWidth={2} d="M12 6v6l4 2" />
-            </svg>
-            Masse horaire : {masseHoraire} / semaine
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {masseHoraire && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                <path strokeWidth={2} d="M12 6v6l4 2" />
+              </svg>
+              Masse horaire : {masseHoraire} / semaine
+            </span>
+          )}
+          <button
+            onClick={handlePrint}
+            disabled={filteredEntries.length === 0}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Ouvre la boîte d'impression — enregistrez en PDF"
+          >
+            <HiPrinter className="h-4 w-4" /> Imprimer
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
