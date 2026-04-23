@@ -298,12 +298,23 @@ const FormateurExamensPage: React.FC = () => {
 
   useEffect(() => { lookupExistingData(); }, [lookupExistingData]);
 
-  // ── Planning: load salles (for room picker) + outside-click for menu ─────
+  // ── Planning: narrow the salle picker to rooms free at the chosen slot.
+  // Re-fetches whenever date / heures change, and while the modal is open so
+  // "I just edited this exam" retains the current salle (exclude_examen).
+  // Falls back to all disponibles while the user hasn't filled the time yet.
   useEffect(() => {
-    axiosInstance.get('/salles-all')
+    if (!planningFormOpen) return;
+    const { date_examen, heure_debut, heure_fin } = planningForm;
+    const params: any = {};
+    if (date_examen)  params.date         = date_examen;
+    if (heure_debut)  params.heure_debut  = heure_debut;
+    if (heure_fin)    params.heure_fin    = heure_fin;
+    if (planningEditing?.id) params.exclude_examen = planningEditing.id;
+    const endpoint = (date_examen && heure_debut && heure_fin) ? '/salles-available' : '/salles-all';
+    axiosInstance.get(endpoint, { params })
       .then(r => setAllSalles(r.data?.data || []))
       .catch(() => {});
-  }, []);
+  }, [planningFormOpen, planningForm.date_examen, planningForm.heure_debut, planningForm.heure_fin, planningEditing?.id]);
 
   useEffect(() => {
     const h = () => setPlanningMenuId(null);

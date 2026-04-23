@@ -90,4 +90,67 @@ class SalleController extends Controller
         // (emploi, examens). Directeur can still see them via /salles (index).
         return $this->success(Salle::where('is_active', true)->get(['id', 'nom', 'type', 'capacite']));
     }
+
+    /**
+     * Salles that are free at a specific date + time range.
+     *
+     * Filters out:
+     *   - indisponible rooms (is_active=false)
+     *   - rooms with an overlapping exam at (date, heure_debut → heure_fin)
+     *   - rooms with an overlapping emploi_du_temps session on that weekday
+     *
+     * `exclude_examen` lets the edit flow ignore the exam being updated so its
+     * current salle stays pickable. Required params are validated loosely so
+     * clients can still open the room picker before filling the time — when
+     * anything is missing we just fall back to `all()` (disponible rooms).
+     */
+    public function available(Request $request)
+    {
+        $date   = $request->input('date');
+        $debut  = $request->input('heure_debut');
+        $fin    = $request->input('heure_fin');
+        $excludeExamen = $request->input('exclude_examen');
+
+        $base = Salle::where('is_active', true);
+
+        if (!$date || !$debut || !$fin) {
+            return $this->success($base->get(['id', 'nom', 'type', 'capacite']));
+        }
+
+        $debut5 = substr($debut, 0, 5);
+        $fin5   = substr($fin, 0, 5);
+
+        // Clashing exams on the same date with overlapping [debut, fin).
+        $busyFromExams = \App\Models\Examen::query()
+            ->whereDate('date_examen', $date)
+            ->where('heure_debut', '<', $fin5)
+            ->where('heure_fin',   '>', $debut5)
+            ->whereNotNull('salle_id')
+            ->when($excludeExamen, fn ($q) => $q->where('id', '!=', $excludeExamen))
+            ->pluck('salle_id');
+
+        // Clashing emploi_du_temps sessions on that weekday (same hour rules).
+        $joursFr = [
+            1 => 'lundi', 2 => 'mardi', 3 => 'mercredi',
+            4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi',
+        ];
+        try {
+            $jour = $joursFr[\Carbon\Carbon::parse($date)->dayOfWeekIso] ?? null;
+        } catch (\Throwable $e) {
+            $jour = null;
+        }
+        $busyFromEmploi = collect();
+        if ($jour) {
+            $busyFromEmploi = \App\Models\EmploiDuTemps::query()
+                ->where('jour', $jour)
+                ->where('heure_debut', '<', $fin5)
+                ->where('heure_fin',   '>', $debut5)
+                ->pluck('salle_id');
+        }
+
+        $busy = $busyFromExams->merge($busyFromEmploi)->unique()->values();
+
+        $rooms = $base->whereNotIn('id', $busy)->get(['id', 'nom', 'type', 'capacite']);
+        return $this->success($rooms);
+    }
 }

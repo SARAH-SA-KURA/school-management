@@ -79,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/salles',              [SalleController::class, 'index']);
     Route::get('/salles-all',          [SalleController::class, 'all']);
+    Route::get('/salles-available',    [SalleController::class, 'available']);
     Route::get('/salles/{salle}',      [SalleController::class, 'show']);
 
     Route::get('/groups',              [GroupController::class, 'index']);
